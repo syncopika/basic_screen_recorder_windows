@@ -82,8 +82,15 @@ std::map<int, std::wstring> filterMap = {
 };
 
 // default settings 
-static WindowInfo gifParams; // WindowInfo is from capture.hh
-static WASAPICapturerInfo captureInfo;
+static WindowInfo captureParams; // WindowInfo is from capture.hh
+static WASAPICapturerInfo audioCaptureInfo;
+
+std::string floatToString(float f){
+    std::ostringstream out;
+    out.precision(2);
+    out << std::fixed << f;
+    return out.str();
+}
 
 // TODO: move this elsewhere pls
 // from: https://github.com/microsoft/Windows-classic-samples/blob/main/Samples/Win7Samples/multimedia/audio/CaptureSharedTimerDriven/WASAPICaptureSharedTimerDriven.cpp
@@ -220,44 +227,6 @@ void SaveWaveData(BYTE* CaptureBuffer, size_t BufferSize, const WAVEFORMATEX* Wa
         }else{
             printf("Unable to open output WAV file %S: %d\n", waveFileName, GetLastError());
         }
-        /*
-        GUID testGuid;
-        if (SUCCEEDED(CoCreateGuid(&testGuid)))
-        {
-            wchar_t* guidString;
-            if (SUCCEEDED(StringFromCLSID(testGuid, &guidString)))
-            {
-                hr = StringCbCat(waveFileName, sizeof(waveFileName), guidString);
-                if (SUCCEEDED(hr))
-                {
-                    hr = StringCbCat(waveFileName, sizeof(waveFileName), L".WAV");
-                    if (SUCCEEDED(hr))
-                    {
-                        HANDLE waveHandle = CreateFile(waveFileName, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS,
-                            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN,
-                            NULL);
-                        if (waveHandle != INVALID_HANDLE_VALUE)
-                        {
-                            if (WriteWaveFile(waveHandle, CaptureBuffer, BufferSize, WaveFormat))
-                            {
-                                printf("Successfully wrote WAVE data to %S\n", waveFileName);
-                            }
-                            else
-                            {
-                                printf("Unable to write wave file\n");
-                            }
-                            CloseHandle(waveHandle);
-                        }
-                        else
-                        {
-                            printf("Unable to open output WAV file %S: %d\n", waveFileName, GetLastError());
-                        }
-                    }
-                }
-                CoTaskMemFree(guidString);
-            }
-        }
-        */
     }
 }
 
@@ -319,17 +288,16 @@ void setUpForAudioCollection(
     );
 }
 
-void doAudioCapture(WASAPICapturerInfo* captureInfo) {
-    CWASAPICapture* capturer = *(captureInfo->capturer);
-    BYTE* captureBuffer = *(captureInfo->buffer);
+void doAudioCapture(WASAPICapturerInfo* audioCaptureInfo) {
+    CWASAPICapture* capturer = *(audioCaptureInfo->capturer);
+    BYTE* captureBuffer = *(audioCaptureInfo->buffer);
     std::cout << "do audio capture start\n";
 
-    int targetDurationInMs = captureInfo->durationInMs;
+    int targetDurationInMs = audioCaptureInfo->durationInMs;
 
-    // maybe this isn't a good idea but try this:
-    // convert ms to s.
+    // maybe this isn't a good idea but try converting ms to s.
     float durationInSec = ceil(targetDurationInMs / 1000.f);
-    if (durationInSec < 1) durationInSec = 1;
+    if(durationInSec < 1) durationInSec = 1;
 
     int targetDurationInSec = (int)durationInSec;
 
@@ -343,8 +311,8 @@ void doAudioCapture(WASAPICapturerInfo* captureInfo) {
     //  We've now captured our wave data.  Now write it out in a wave file.
     //
     std::cout << "got the audio data. writing to file now...\n";
-    std::cout << "wav filename: " << captureInfo->outputName << "\n";
-    SaveWaveData(captureBuffer, capturer->BytesCaptured(), capturer->MixFormat(), captureInfo->outputName);
+    std::cout << "wav filename: " << audioCaptureInfo->outputName << "\n";
+    SaveWaveData(captureBuffer, capturer->BytesCaptured(), capturer->MixFormat(), audioCaptureInfo->outputName);
 
     //
     //  Now shut down the capturer and release it we're done.
@@ -439,7 +407,7 @@ void createCheckBox(
 }
 
 
-void makeGif(WindowInfo* args){
+void doScreenCapture(WindowInfo* args){
     // TODO: this should assemble the video using the captured audio and captured images
     HWND mainWindow = args->mainWindow;
     
@@ -458,18 +426,18 @@ void makeGif(WindowInfo* args){
     getSnapshots(nFrames, tDelay, x1Pos, y1Pos, (x2Pos-x1Pos), (y2Pos-y1Pos), getBMPImageData, args);
     PostMessage(mainWindow, ID_FINISHED, 0, 0);
 
-    // TODO: add caption to each snapshot if needed
+    // TODO: add caption to each snapshot if needed, apply filters
 }
 
 
 /***
 
-    this function, which does the gif generation, is executed by a new thread.
+    this function, which does the screen capture, is executed by a new thread.
     pass it a pointer to a struct that contains parameters for creating the gif
 
 ***/
-DWORD WINAPI processGifThread(LPVOID windowInfo){
-    makeGif((WindowInfo*)windowInfo);
+DWORD WINAPI processScreenCaptureThread(LPVOID windowInfo){
+    doScreenCapture((WindowInfo*)windowInfo);
     return 0;
 }
 
@@ -479,8 +447,8 @@ DWORD WINAPI processGifThread(LPVOID windowInfo){
     pass it a pointer to a struct that contains parameters needed for collecting the audio
 
 ***/
-DWORD WINAPI processAudioThread(LPVOID captureInfo) {
-    doAudioCapture((WASAPICapturerInfo*)captureInfo);
+DWORD WINAPI processAudioThread(LPVOID audioCaptureInfo) {
+    doAudioCapture((WASAPICapturerInfo*)audioCaptureInfo);
     return 0;
 }
 
@@ -664,16 +632,16 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                         // directory couldn't be made
                     }
 
-                    gifParams.tempDirectory = dirName;
+                    captureParams.tempDirectory = dirName;
                     
                     // set up arguments struct to pass to the thread that will generate the gif 
                     // need to allocate on to heap otherwise this data will go out of scope and be unreachable from thread 
-                    gifParams.numFrames = nFrames;
-                    gifParams.timeDelay = tDelay;
-                    gifParams.selectedFilter = currFilterIndex;
-                    gifParams.directory = std::string("");
-                    gifParams.captionText = std::wstring(captext);
-                    gifParams.mainWindow = hwnd;
+                    captureParams.numFrames = nFrames;
+                    captureParams.timeDelay = tDelay;
+                    captureParams.selectedFilter = currFilterIndex;
+                    captureParams.directory = std::string("");
+                    captureParams.captionText = std::wstring(captext);
+                    captureParams.mainWindow = hwnd;
 
                     delete[] captext;
 
@@ -713,15 +681,15 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                             return -1;
                         }
 
-                        captureInfo.buffer = &captureBuffer;
-                        captureInfo.capturer = &capturer;
-                        captureInfo.durationInMs = targetDurationInMs;
-                        captureInfo.outputName = std::string(dirName); // name the wav output the same as the temp directory of the snapshots
+                        audioCaptureInfo.buffer = &captureBuffer;
+                        audioCaptureInfo.capturer = &capturer;
+                        audioCaptureInfo.durationInMs = targetDurationInMs;
+                        audioCaptureInfo.outputName = std::string(dirName); // name the wav output the same as the temp directory of the snapshots
 
                         if(capturer->Start(captureBuffer, captureBufferSize)){
                             // start frame and audio capture process in child threads
-                            HANDLE getFramesThread = CreateThread(NULL, 0, processGifThread, &gifParams, 0, 0);
-                            HANDLE getAudioThread = CreateThread(NULL, 0, processAudioThread, &captureInfo, 0, 0);
+                            HANDLE getFramesThread = CreateThread(NULL, 0, processScreenCaptureThread, &captureParams, 0, 0);
+                            HANDLE getAudioThread = CreateThread(NULL, 0, processAudioThread, &audioCaptureInfo, 0, 0);
                             HANDLE waitArray[2] = { getFramesThread, getAudioThread };
 
                             // set max timeout time based on audio duration for now (that seems pretty reasonable?). add an extra second for buffer room
@@ -735,7 +703,8 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
                                 // example: ffmpeg -framerate 8.3 -i ./temp_14-08-2022_183147/screen%d.bmp -i temp_14-08-2022_183147.wav -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v libx264 -pix_fmt yuv420p -r 8 testing.mp4
                                 std::string command(
-                                    std::string("ffmpeg -framerate ") +
+                                    std::string("ffmpeg ") +
+                                    std::string(" -framerate ") + 
                                     std::to_string(framerate).c_str() +
                                     std::string(" -i ./") +
                                     dirName +
@@ -744,9 +713,10 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                                     dirName +
                                     std::string(".wav") +
                                     std::string(" -vf \"pad=ceil(iw/2)*2:ceil(ih/2)*2\"") +
-                                    std::string(" -c:v libx264 -pix_fmt yuv420p -r ") +
+                                    std::string(" -c:v libx264 -pix_fmt yuv420p ") +
+                                    std::string(" -r ") +
                                     std::to_string(framerate).c_str() +
-                                    std::string(" ") +
+                                    std::string(" ") + // can try -shortest flag if needed
                                     dirName +
                                     std::string(".mp4")
                                 );
@@ -761,6 +731,9 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                                     std::cout << "processing complete :)\n";
 
                                     // TODO: cleanup. delete the images and wav file (or make this optional via the GUI?)
+                                    if(captureParams.cleanupFiles){
+                                        std::cout << "TODO: need to cleanup.\n";
+                                    }
                                 }
                             }
                         }else{
@@ -869,55 +842,64 @@ LRESULT CALLBACK WndProcParameterPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                     {
                         // get the selected color for the screen! 
                         HWND colorSelect = GetDlgItem(hwnd, ID_SELECTION_COLOR);
-                        gifParams.selectionWindowColor = getSelectedColor(colorSelect);
+                        captureParams.selectionWindowColor = getSelectedColor(colorSelect);
                         
                         // get the saturation value 
                         HWND saturation = GetDlgItem(hwnd, ID_SET_SATURATION);
-                        TCHAR saturationValue[5];
-                        GetWindowText(saturation, saturationValue, sizeof(saturationValue));
-                        float satVal = _wtof(saturationValue);
-                        gifParams.saturationValue = satVal > 10.0 ? 10.0 : satVal;
-                        SetDlgItemText(hwnd, ID_SET_SATURATION, std::to_wstring((gifParams.saturationValue)).c_str());
+                        CHAR saturationValue[5];
+                        GetWindowTextA(saturation, saturationValue, sizeof(saturationValue));
+                        float satVal = atof(saturationValue);
+                        captureParams.saturationValue = satVal > 10.0 ? 10.0 : satVal;
+                        SetDlgItemTextA(hwnd, ID_SET_SATURATION, floatToString(captureParams.saturationValue).c_str());
                         
                         // get the mosaic chunk size value
                         HWND mosaic = GetDlgItem(hwnd, ID_SET_MOSAIC);
                         TCHAR mosaicValue[5];
                         GetWindowText(mosaic, mosaicValue, sizeof(mosaicValue));
                         int mosVal = _wtoi(mosaicValue);
-                        gifParams.mosaicChunkSize = mosVal > 80 ? 80 : mosVal;
-                        SetDlgItemText(hwnd, ID_SET_MOSAIC, std::to_wstring(gifParams.mosaicChunkSize).c_str());
+                        captureParams.mosaicChunkSize = mosVal > 80 ? 80 : mosVal;
+                        SetDlgItemText(hwnd, ID_SET_MOSAIC, std::to_wstring(captureParams.mosaicChunkSize).c_str());
                         
                         // get the outline size value 
                         HWND outline = GetDlgItem(hwnd, ID_SET_OUTLINE);
                         TCHAR outlineValue[5];
                         GetWindowText(outline, outlineValue, sizeof(outlineValue));
                         int outlineVal = _wtoi(outlineValue);
-                        gifParams.outlineColorDiffLimit = outlineVal > 20 ? 20 : outlineVal;
-                        SetDlgItemText(hwnd, ID_SET_OUTLINE, std::to_wstring(gifParams.outlineColorDiffLimit).c_str());
+                        captureParams.outlineColorDiffLimit = outlineVal > 20 ? 20 : outlineVal;
+                        SetDlgItemText(hwnd, ID_SET_OUTLINE, std::to_wstring(captureParams.outlineColorDiffLimit).c_str());
                         
                         // get the Voronoi neighbor constant value
                         HWND voronoi = GetDlgItem(hwnd, ID_SET_VORONOI);
                         TCHAR voronoiValue[5];
                         GetWindowText(voronoi, voronoiValue, sizeof(voronoiValue));
                         int voronoiConst = _wtoi(voronoiValue);
-                        gifParams.voronoiNeighborConstant = voronoiConst > 60 ? 60 : voronoiConst;
-                        SetDlgItemText(hwnd, ID_SET_VORONOI, std::to_wstring(gifParams.voronoiNeighborConstant).c_str());
+                        captureParams.voronoiNeighborConstant = voronoiConst > 60 ? 60 : voronoiConst;
+                        SetDlgItemText(hwnd, ID_SET_VORONOI, std::to_wstring(captureParams.voronoiNeighborConstant).c_str());
                         
                         // get the blur factor value
                         HWND blur = GetDlgItem(hwnd, ID_SET_BLUR);
                         TCHAR blurValue[5];
                         GetWindowText(blur, blurValue, sizeof(blurValue));
                         int blurVal = _wtoi(blurValue);
-                        gifParams.blurFactor = blurVal > 10 ? 10 : blurVal;
-                        SetDlgItemText(hwnd, ID_SET_BLUR, std::to_wstring(gifParams.blurFactor).c_str());
+                        captureParams.blurFactor = blurVal > 10 ? 10 : blurVal;
+                        SetDlgItemText(hwnd, ID_SET_BLUR, std::to_wstring(captureParams.blurFactor).c_str());
                         
                         // get the value of 'show cursor' checkbox 
                         HWND getCursorBox = GetDlgItem(hwnd, ID_GET_CURSOR);
                         int getCursorVal = SendMessage(getCursorBox, BM_GETCHECK, 0, 0);
                         if(getCursorVal == BST_CHECKED){
-                            gifParams.getCursor = true;
+                            captureParams.getCursor = true;
                         }else{
-                            gifParams.getCursor = false;
+                            captureParams.getCursor = false;
+                        }
+
+                        HWND getCleanupCursorBox = GetDlgItem(hwnd, ID_CLEANUP_FILES);
+                        int getCleanupCursorVal = SendMessage(getCleanupCursorBox, BM_GETCHECK, 0, 0);
+                        if(getCleanupCursorVal == BST_CHECKED){
+                            captureParams.cleanupFiles = true;
+                        }else{
+                            captureParams.cleanupFiles = false;
+
                         }
                     }
                 }
@@ -988,7 +970,7 @@ LRESULT CALLBACK WndProcSelection(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
             }else if(bDraw){  
                 HDC hdc = GetDC(hwnd);
                 SelectObject(hdc,GetStockObject(DC_BRUSH));
-                SetDCBrushColor(hdc, gifParams.selectionWindowColor);
+                SetDCBrushColor(hdc, captureParams.selectionWindowColor);
                 
                 SetROP2(hdc, R2_NOTXORPEN);
                 
@@ -1041,7 +1023,7 @@ LRESULT CALLBACK WndProcSelection(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
                     // need to clear screen!!
                     HDC hdc = GetDC(hwnd);
                     SelectObject(hdc,GetStockObject(DC_BRUSH));
-                    SetDCBrushColor(hdc, gifParams.selectionWindowColor); 
+                    SetDCBrushColor(hdc, captureParams.selectionWindowColor); 
                     SetROP2(hdc, R2_NOTXORPEN);
                     // erase old rectangle 
                     Rectangle(hdc, ptCurr.x, ptCurr.y, ptNew.x, ptNew.y);
@@ -1165,7 +1147,7 @@ void createMainScreen(HWND hwnd, HINSTANCE hInstance){
         font will also be Impact and size will be determined by program 
     */
     createLabel(
-        L"specify a message to show at bottom of gif: ",
+        L"specify a message to show at bottom of video: ",
         340, 20,
         10, 120,
         hwnd,
@@ -1265,6 +1247,9 @@ void createParameterPage(HWND hwnd, HINSTANCE hInstance){
 
     // set whether the gif should capture the cursor or not
     createCheckBox(L"capture screen cursor", 180, 50, 10, 230, hwnd, hInstance, (HMENU)ID_GET_CURSOR, hFont);
+
+    // whether the captured frames (.bmps) and audio (.wav) should be deleted after video creation
+    createCheckBox(L"cleanup files after video creation", 250, 50, 10, 260, hwnd, hInstance, (HMENU)ID_CLEANUP_FILES, hFont);
     
     HWND saveParameters = CreateWindow(
         TEXT("button"),
@@ -1309,15 +1294,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     AllocConsole();
     freopen_s(&stream, "CON", "w", stdout);
     
-    // add some default parameters to gifParams immediately
-    gifParams.filters = filterMap;
-    gifParams.selectionWindowColor = COLOR;
-    gifParams.saturationValue = 2.1;
-    gifParams.mosaicChunkSize = 30;
-    gifParams.outlineColorDiffLimit = 10;
-    gifParams.voronoiNeighborConstant = 30;
-    gifParams.blurFactor = 3;
-    gifParams.getCursor = false;
+    // add some default parameters to captureParams immediately
+    captureParams.filters = filterMap;
+    captureParams.selectionWindowColor = COLOR;
+    captureParams.saturationValue = 2.1;
+    captureParams.mosaicChunkSize = 30;
+    captureParams.outlineColorDiffLimit = 10;
+    captureParams.voronoiNeighborConstant = 30;
+    captureParams.blurFactor = 3;
+    captureParams.getCursor = false;
+    captureParams.cleanupFiles = false;
     
     // for improving the gui appearance (buttons, that is. the font needs to be changed separately) 
     INITCOMMONCONTROLSEX icc;

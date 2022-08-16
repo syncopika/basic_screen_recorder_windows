@@ -116,9 +116,9 @@ void getSnapshots(
     int width, 
     int height, 
     std::vector<uint8_t> (*filter)(const std::string&, WindowInfo*), 
-    WindowInfo* gifParams
+    WindowInfo* captureParams
 ){
-    HWND mainWindow = gifParams->mainWindow;
+    HWND mainWindow = captureParams->mainWindow;
     
     // Initialize GDI+.
     GdiplusStartupInput gdiplusStartupInput;
@@ -126,17 +126,32 @@ void getSnapshots(
     GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
     
     // get temp directory 
-    std::string dirName = gifParams->tempDirectory;
+    std::string dirName = captureParams->tempDirectory;
 
     std::string name;
     for(int i = 0; i < nImages; i++){
         // put all images in temp folder
         name = dirName + "/screen" + intToString(i) + ".bmp";
-        screenCapture(x, y, width, height, name.c_str(), gifParams->getCursor);
+        screenCapture(x, y, width, height, name.c_str(), captureParams->getCursor);
         Sleep(delay);
     }
     
     GdiplusShutdown(gdiplusToken);
+
+    /*
+    // TODO: apply filter and caption as needed
+    std::string nextFrame; 
+    for(int i = 0; i < nImages; i++){
+        nextFrame = dirName + "/screen" + intToString(i) + ".bmp";
+        
+        // post message to indicate which frame is being processed 
+        PostMessage(mainWindow, ID_PROCESS_FRAME, (WPARAM)i, 0);
+        
+        // apply filter
+
+        // apply caption
+    }
+    */
 }
 
 // this function resizes bmp images. it's used to make sure all frames being fed to the gif generator 

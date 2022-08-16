@@ -33,9 +33,10 @@ struct WASAPICapturerInfo {
 	std::string outputName;
 };
 
+std::string floatToString(float f);
 
 void reset(POINT *p1, POINT *p2, bool *drag, bool *draw);
-void makeGif(WindowInfo* args);
+void doScreenCapture(WindowInfo* args);
 
 // some nice functions to create certain window elements
 void createEditBox(
@@ -76,7 +77,7 @@ void createCheckBox(
 
 COLORREF getSelectedColor(HWND selectBox);
 
-DWORD WINAPI processGifThread(LPVOID windowInfo);
+DWORD WINAPI processScreenCaptureThread(LPVOID windowInfo);
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -87,6 +88,20 @@ LRESULT CALLBACK WndProcAboutPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
 void createMainScreen(HWND hwnd, HINSTANCE hInstance);
 void createParameterPage(HWND hwnd, HINSTANCE hInstance);
 void createAboutPage(HWND hwnd, HINSTANCE hInstance);
+
+void setUpForAudioCollection(
+	IMMDeviceEnumerator*& pEnumerator,
+	IMMDevice*& pDevice,
+	IAudioClient*& pAudioClient,
+	IAudioCaptureClient*& pCaptureClient,
+	WAVEFORMATEX*& pwfx
+);
+
+void doAudioCapture(WASAPICapturerInfo* audioCaptureInfo);
+
+bool WriteWaveFile(HANDLE FileHandle, const BYTE* Buffer, const size_t BufferSize, const WAVEFORMATEX* WaveFormat);
+void SaveWaveData(BYTE* CaptureBuffer, size_t BufferSize, const WAVEFORMATEX* WaveFormat, std::string fileName);
+
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow);
 

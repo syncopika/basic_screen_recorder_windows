@@ -38,6 +38,7 @@ struct WindowInfo {
 	int voronoiNeighborConstant; // for Voronoi filter
 	int blurFactor;              // for blur filter
 	bool getCursor;
+	bool cleanupFiles;
 };
 
 // convert an int to string 
@@ -53,6 +54,7 @@ bool screenCapture(int x, int y, int width, int height, const char* filename, bo
 
 // this function relies on all the above 
 // the result is creating a temp folder and populating it with screenshots
+// and applies filters / caption to each frame
 void getSnapshots(
 	int nImages, 
 	int delay, 
@@ -61,16 +63,7 @@ void getSnapshots(
 	int width, 
 	int height, 
 	std::vector<uint8_t> (*filter)(const std::string&, WindowInfo*), 
-	WindowInfo* gifParams
-);
-
-// this function assembles the gif from bmp images in a specified directory 
-void assembleGif(
-	int nImages, 
-	int delay, 
-	std::vector<std::string>& images, 
-	std::vector<uint8_t> (*filter)(const std::string&, WindowInfo*),
-	WindowInfo* gifParams
+	WindowInfo* captureParams
 );
 
 // this function helps resize any bmps. it doesn't respect ratios though currently so it might produce not-so-good frames.
