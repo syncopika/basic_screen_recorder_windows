@@ -600,8 +600,7 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                     HWND filterbox = GetDlgItem(hwnd, ID_FILTERS_COMBOBOX);
                     int currFilterIndex = SendMessage(filterbox, CB_GETCURSEL, 0, 0);
                     
-                    // check if user wants a caption! if there's text entered in the textbox for ID_CAPTION_MSG,
-                    // pass it to assembleGif 
+                    // check if user wants a caption! if there's text entered in the textbox for ID_CAPTION_MSG
                     HWND captionText = GetDlgItem(hwnd, ID_CAPTION_MSG);
                     int textLen = GetWindowTextLength(captionText);
                     int captionSize = textLen + 1; // +1 for null term
@@ -633,9 +632,6 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                     }
 
                     captureParams.tempDirectory = dirName;
-                    
-                    // set up arguments struct to pass to the thread that will generate the gif 
-                    // need to allocate on to heap otherwise this data will go out of scope and be unreachable from thread 
                     captureParams.numFrames = nFrames;
                     captureParams.timeDelay = tDelay;
                     captureParams.selectedFilter = currFilterIndex;
@@ -661,8 +657,7 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                     std::cout << "samples per sec: " << pwfx->nSamplesPerSec << "\n";
                     std::cout << "num channels: " << pwfx->nChannels << "\n";
                     std::cout << "starting capture...\n";
-                    
-                    // https://github.com/microsoft/Windows-classic-samples/blob/main/Samples/Win7Samples/multimedia/audio/CaptureSharedTimerDriven/WASAPICaptureSharedTimerDriven.cpp#L503
+
                     int targetLatency = 10;
                     CWASAPICapture* capturer = new CWASAPICapture(pDevice, true, eConsole);
                     if(capturer == NULL){
@@ -692,8 +687,8 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                             HANDLE getAudioThread = CreateThread(NULL, 0, processAudioThread, &audioCaptureInfo, 0, 0);
                             HANDLE waitArray[2] = { getFramesThread, getAudioThread };
 
-                            // set max timeout time based on audio duration for now (that seems pretty reasonable?). add an extra second for buffer room
-                            DWORD waitResult = WaitForMultipleObjects(2, waitArray, TRUE, audioDuration + 1000);
+                            // set max timeout time based on audio duration for now with some buffer room (that seems pretty reasonable?).
+                            DWORD waitResult = WaitForMultipleObjects(2, waitArray, TRUE, audioDuration + 30000); // 30 sec buffer
                             if(waitResult >= WAIT_OBJECT_0 + 0 && waitResult < WAIT_OBJECT_0 + 2){
                                 // all child threads have completed
                                 // assemble the video file using the captured screenshots and audio
@@ -732,7 +727,17 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
                                     // TODO: cleanup. delete the images and wav file (or make this optional via the GUI?)
                                     if(captureParams.cleanupFiles){
-                                        std::cout << "TODO: need to cleanup.\n";
+                                        for (int i = 0; i < captureParams.numFrames; i++) {
+                                            // delete each file first
+                                            DeleteFileA((dirName + "/screen" + std::to_string(i) + ".bmp").c_str());
+                                        }
+                                        // delete the dir
+                                        RemoveDirectoryA(dirName.c_str());
+
+                                        // delete the wav file
+                                        DeleteFileA((dirName + ".wav").c_str());
+
+                                        std::cout << "done cleaning up!\n";
                                     }
                                 }
                             }

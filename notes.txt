@@ -14,6 +14,7 @@ more resources:
 https://stackoverflow.com/questions/37956090/how-to-construct-a-stdstring-with-embedded-values-i-e-string-interpolation
 https://stackoverflow.com/questions/22753328/c-error-expression-must-have-integral-or-enum-type-getting-this-from-a-s
 https://stackoverflow.com/questions/16605967/set-precision-of-stdto-string-when-converting-floating-point-values (e.g. for saturation value on the parameters page)
+https://stackoverflow.com/questions/4978419/c-gdi-loading-an-image-from-a-file-then-deleting-the-file-before-unloading
 
 TODO:
 - take resizeBMP function in capture.cpp and move the caption-writing functionality to the image capturing step? or use it

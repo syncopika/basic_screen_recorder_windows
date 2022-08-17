@@ -62,7 +62,7 @@ void getSnapshots(
 	int y, 
 	int width, 
 	int height, 
-	std::vector<uint8_t> (*filter)(const std::string&, WindowInfo*), 
+	std::vector<uint8_t> (*filter)(const std::wstring&, WindowInfo*), 
 	WindowInfo* captureParams
 );
 
@@ -70,7 +70,7 @@ void getSnapshots(
 int resizeBMPs(int nImages, std::vector<std::string>& images, int width, int height, std::string& captionText);
 
 // get bmp image data 
-std::vector<uint8_t> getBMPImageData(const std::string& filename, WindowInfo* gifParams);
+std::vector<uint8_t> getBMPImageData(const std::wstring& filename, WindowInfo* gifParams);
 
 
 #endif // CAPTURE_H

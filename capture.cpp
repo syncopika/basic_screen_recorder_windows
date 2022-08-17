@@ -115,7 +115,7 @@ void getSnapshots(
     int y, 
     int width, 
     int height, 
-    std::vector<uint8_t> (*filter)(const std::string&, WindowInfo*), 
+    std::vector<uint8_t> (*filter)(const std::wstring&, WindowInfo*), 
     WindowInfo* captureParams
 ){
     HWND mainWindow = captureParams->mainWindow;
@@ -135,23 +135,99 @@ void getSnapshots(
         screenCapture(x, y, width, height, name.c_str(), captureParams->getCursor);
         Sleep(delay);
     }
-    
-    GdiplusShutdown(gdiplusToken);
 
-    /*
     // TODO: apply filter and caption as needed
-    std::string nextFrame; 
+    std::wstring nextFrame; 
+    std::wstring dname = std::wstring(dirName.begin(), dirName.end());
     for(int i = 0; i < nImages; i++){
-        nextFrame = dirName + "/screen" + intToString(i) + ".bmp";
+        nextFrame = dname + L"/screen" + std::to_wstring(i) + L".bmp";
         
         // post message to indicate which frame is being processed 
         PostMessage(mainWindow, ID_PROCESS_FRAME, (WPARAM)i, 0);
         
         // apply filter
+        if (captureParams->selectedFilter != 0) {
+            CLSID bmpClsid;
+            Gdiplus::Bitmap* bmp = new Gdiplus::Bitmap(nextFrame.c_str(), false);
+            int h = bmp->GetHeight();
+            int w = bmp->GetWidth();
 
-        // apply caption
+            std::cout << "processing frame: " << i << "\n";
+
+            std::vector<uint8_t> img = (*filter)(nextFrame, captureParams);
+
+            //std::cout << "image height: " << h << "\n";
+            //std::cout << "image width: " << w << "\n";
+            //std::cout << "image data length: " << img.size() << "\n";
+
+            // need to cycle through the pixels of bmp to edit
+            for (int j = 0; j < h; j++) {
+                for (int k = 0; k < w; k++) {
+                    int r = img[(4 * j) + (4 * k)];
+                    int g = img[(4 * j) + (4 * k) + 1];
+                    int b = img[(4 * j) + (4 * k) + 2];
+                    int alpha = img[(4 * j) + (4 * k) + 3];
+                    bmp->SetPixel(k, j, (Color::MakeARGB(alpha, r, g, b)));
+                }
+            }
+
+            /* TODO: apply caption
+            if (captureParams->captionText != L"") {
+                std::wstring mtext = std::wstring(captureParams->captionText.begin(), captureParams->captionText.end());
+                const wchar_t* string = mtext.c_str(); //L"BLAH BLAH BLAH";
+                int stringLen = mtext.size();
+
+                // decide where to place the text, x-coordinate-wise
+                // assume each char in the string takes up 15 pixels?
+                int xCoord = (w / 2) - ((stringLen * 15) / 2);
+
+                Gdiplus::FontFamily impactFont(L"Impact");
+                Gdiplus::StringFormat strFormat;
+                Gdiplus::GraphicsPath gpath;       // use this to hold the outline of the string we want to draw
+                gpath.AddString(
+                    string,                        // the string
+                    wcslen(string),                // length of string
+                    &impactFont,                   // font family
+                    FontStyleRegular,              // style of type face
+                    32,                            // font size
+                    Point(xCoord, (h / 2 + h / 3)),    // where to put the string
+                    &strFormat                     // layout information for the string
+                );
+
+                Gdiplus::Pen pen(Color(0, 0, 0), 2); // color and width of pen
+                pen.SetLineJoin(LineJoinRound);    // prevent sharp pointers from occurring on some chars
+                graphics.SetSmoothingMode(SmoothingModeAntiAlias); // antialias the text so the outline doesn't look choppy
+                graphics.DrawPath(&pen, &gpath);
+
+                Gdiplus::SolidBrush brush(Color(255, 255, 255, 255));
+                graphics.FillPath(&brush, &gpath);
+            }
+
+            // overwite old file with this new one
+            int result = getEncoderClsid(L"image/bmp", &pngClsid);
+            if (result != -1) {
+                //std::cout << "Encoder succeeded" << std::endl;
+            }
+            else {
+                std::cout << "Encoder failed" << std::endl;
+            }
+
+            */
+
+            // We're getting a status of 7 (Win32 error) when trying to save with the same filename b/c I think the file is still open
+            // maybe helpful for explanation? https://stackoverflow.com/questions/1036115/overwriting-an-image-using-save-method-of-bitmap
+            // also helpful: https://stackoverflow.com/questions/4978419/c-gdi-loading-an-image-from-a-file-then-deleting-the-file-before-unloading
+            bool deleteStatus = DeleteFile(nextFrame.c_str());
+            std::cout << "delete status: " << deleteStatus << "\n";
+            Gdiplus::Status s = bmp->Save(nextFrame.c_str(), &bmpClsid, NULL);
+            std::cout << "frame save status: " << s << "\n";
+            
+            delete bmp;
+        }
     }
-    */
+
+    // shutdown gdiplus 
+    GdiplusShutdown(gdiplusToken);
 }
 
 // this function resizes bmp images. it's used to make sure all frames being fed to the gif generator 
@@ -279,7 +355,7 @@ int resizeBMPs(int nImages, std::vector<std::string>& images, int width, int hei
 ***/
 // get a bmp image and extract the image data into a uint8_t array 
 // which will be passed to gif functions from gif.h to create the gif 
-std::vector<uint8_t> getBMPImageData(const std::string& filename, WindowInfo* gifParams){
+std::vector<uint8_t> getBMPImageData(const std::wstring& filename, WindowInfo* gifParams){
     std::wstring filtername = (gifParams->filters)[gifParams->selectedFilter];
     
     // bmps have a 54 byte header 
@@ -398,11 +474,6 @@ std::vector<uint8_t> getBMPImageData(const std::string& filename, WindowInfo* gi
         finalImageData = image;
     }else{
         // return an empty vector 
-        return finalImageData;
-    }
-    
-    // apply filters as needed 
-    if(filtername == L"none"){
         return finalImageData;
     }
 
