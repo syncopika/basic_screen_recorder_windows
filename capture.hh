@@ -66,9 +66,6 @@ void getSnapshots(
 	WindowInfo* captureParams
 );
 
-// this function helps resize any bmps. it doesn't respect ratios though currently so it might produce not-so-good frames.
-int resizeBMPs(int nImages, std::vector<std::string>& images, int width, int height, std::string& captionText);
-
 // get bmp image data 
 std::vector<uint8_t> getBMPImageData(const std::wstring& filename, WindowInfo* gifParams);
 

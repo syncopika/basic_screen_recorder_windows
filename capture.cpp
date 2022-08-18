@@ -109,22 +109,22 @@ bool screenCapture(int x, int y, int width, int height, const char* filename, bo
 
 // notice this takes a function pointer!
 void getSnapshots(
-    int nImages, 
-    int delay, 
-    int x, 
-    int y, 
-    int width, 
-    int height, 
-    std::vector<uint8_t> (*filter)(const std::wstring&, WindowInfo*), 
+    int nImages,
+    int delay,
+    int x,
+    int y,
+    int width,
+    int height,
+    std::vector<uint8_t>(*filter)(const std::wstring&, WindowInfo*),
     WindowInfo* captureParams
 ){
     HWND mainWindow = captureParams->mainWindow;
-    
+
     // Initialize GDI+.
     GdiplusStartupInput gdiplusStartupInput;
     ULONG_PTR gdiplusToken;
     GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
-    
+
     // get temp directory 
     std::string dirName = captureParams->tempDirectory;
 
@@ -136,50 +136,59 @@ void getSnapshots(
         Sleep(delay);
     }
 
-    // TODO: apply filter and caption as needed
-    std::wstring nextFrame; 
-    std::wstring dname = std::wstring(dirName.begin(), dirName.end());
-    for(int i = 0; i < nImages; i++){
-        nextFrame = dname + L"/screen" + std::to_wstring(i) + L".bmp";
-        
-        // post message to indicate which frame is being processed 
-        PostMessage(mainWindow, ID_PROCESS_FRAME, (WPARAM)i, 0);
-        
-        // apply filter
-        if (captureParams->selectedFilter != 0) {
-            CLSID bmpClsid;
-            Gdiplus::Bitmap* bmp = new Gdiplus::Bitmap(nextFrame.c_str(), false);
-            int h = bmp->GetHeight();
-            int w = bmp->GetWidth();
+    // apply filter and caption as needed
+    if(captureParams->selectedFilter != 0 || captureParams->captionText != L""){
+        std::wstring dname = std::wstring(dirName.begin(), dirName.end());
 
+        for(int i = 0; i < nImages; i++){
+            std::wstring nextFrame = dname + L"/screen" + std::to_wstring(i) + L".bmp";
+
+            // post message to indicate which frame is being processed
             std::cout << "processing frame: " << i << "\n";
+            PostMessage(mainWindow, ID_PROCESS_FRAME, (WPARAM)i, 0);
 
-            std::vector<uint8_t> img = (*filter)(nextFrame, captureParams);
+            Gdiplus::Bitmap* bmp = new Gdiplus::Bitmap(nextFrame.c_str(), false);
+            int height = bmp->GetHeight();
+            int width = bmp->GetWidth();
 
-            //std::cout << "image height: " << h << "\n";
-            //std::cout << "image width: " << w << "\n";
-            //std::cout << "image data length: " << img.size() << "\n";
+            CLSID bmpClsid;
 
-            // need to cycle through the pixels of bmp to edit
-            for (int j = 0; j < h; j++) {
-                for (int k = 0; k < w; k++) {
-                    int r = img[(4 * j) + (4 * k)];
-                    int g = img[(4 * j) + (4 * k) + 1];
-                    int b = img[(4 * j) + (4 * k) + 2];
-                    int alpha = img[(4 * j) + (4 * k) + 3];
-                    bmp->SetPixel(k, j, (Color::MakeARGB(alpha, r, g, b)));
+            // apply filter
+            if(captureParams->selectedFilter != 0){
+                std::vector<uint8_t> img = (*filter)(nextFrame, captureParams);
+
+                //std::cout << "image height: " << h << "\n";
+                //std::cout << "image width: " << w << "\n";
+                //std::cout << "image data length: " << img.size() << "\n";
+
+                // need to cycle through the pixels of bmp to edit
+                for(int j = 0; j < height; j++){
+                    for(int k = 0; k < width; k++){
+                        int r = img[(4 * j * width) + (4 * k)];
+                        int g = img[(4 * j * width) + (4 * k) + 1];
+                        int b = img[(4 * j * width) + (4 * k) + 2];
+                        int alpha = img[(4 * j * width) + (4 * k) + 3];
+                        bmp->SetPixel(k, j, (Color::MakeARGB(alpha, r, g, b)));
+                    }
                 }
             }
 
-            /* TODO: apply caption
-            if (captureParams->captionText != L"") {
+            // copy over to another new bitmap
+            // make a copy because having trouble overwriting the existing file before deleting the Bitmap pointer
+            // maybe helpful for explaining: https://stackoverflow.com/questions/1036115/overwriting-an-image-using-save-method-of-bitmap
+            Gdiplus::Bitmap* newBMP = new Gdiplus::Bitmap(width, height, bmp->GetPixelFormat());
+            Gdiplus::Graphics graphics(newBMP);
+            graphics.DrawImage(bmp, 0, 0, width, height);
+
+            // apply caption
+            if(captureParams->captionText != L""){
                 std::wstring mtext = std::wstring(captureParams->captionText.begin(), captureParams->captionText.end());
                 const wchar_t* string = mtext.c_str(); //L"BLAH BLAH BLAH";
                 int stringLen = mtext.size();
 
                 // decide where to place the text, x-coordinate-wise
                 // assume each char in the string takes up 15 pixels?
-                int xCoord = (w / 2) - ((stringLen * 15) / 2);
+                int xCoord = (width / 2) - ((stringLen * 15) / 2);
 
                 Gdiplus::FontFamily impactFont(L"Impact");
                 Gdiplus::StringFormat strFormat;
@@ -190,7 +199,7 @@ void getSnapshots(
                     &impactFont,                   // font family
                     FontStyleRegular,              // style of type face
                     32,                            // font size
-                    Point(xCoord, (h / 2 + h / 3)),    // where to put the string
+                    Point(xCoord, (height / 2 + height / 3)),    // where to put the string
                     &strFormat                     // layout information for the string
                 );
 
@@ -203,148 +212,27 @@ void getSnapshots(
                 graphics.FillPath(&brush, &gpath);
             }
 
-            // overwite old file with this new one
-            int result = getEncoderClsid(L"image/bmp", &pngClsid);
-            if (result != -1) {
-                //std::cout << "Encoder succeeded" << std::endl;
-            }
-            else {
-                std::cout << "Encoder failed" << std::endl;
-            }
+            delete bmp;
 
-            */
-
-            // We're getting a status of 7 (Win32 error) when trying to save with the same filename b/c I think the file is still open
-            // maybe helpful for explanation? https://stackoverflow.com/questions/1036115/overwriting-an-image-using-save-method-of-bitmap
-            // also helpful: https://stackoverflow.com/questions/4978419/c-gdi-loading-an-image-from-a-file-then-deleting-the-file-before-unloading
             bool deleteStatus = DeleteFile(nextFrame.c_str());
-            std::cout << "delete status: " << deleteStatus << "\n";
-            Gdiplus::Status s = bmp->Save(nextFrame.c_str(), &bmpClsid, NULL);
-            std::cout << "frame save status: " << s << "\n";
-            
-            delete bmp;
-        }
-    }
+            //std::cout << "delete status: " << deleteStatus << "\n";
 
-    // shutdown gdiplus 
-    GdiplusShutdown(gdiplusToken);
-}
-
-// this function resizes bmp images. it's used to make sure all frames being fed to the gif generator 
-// are the same dimension. this occurs when a user specifies a directory of bmps to generate a gif from.
-// takes in a number indicating how many images to check for resize, and a width and height to resize to
-// it returns an integer indicating if anything was resized (1 = something was resized);
-// for now, create a new folder called temp_resized to store this new set of images (including the ones that weren't resized)
-// last argument is captionText, which is a string that, if not empty (""), will be written near the bottom of each frame  
-int resizeBMPs(int nImages, std::vector<std::string>& images, int width, int height, std::string& captionText){
-    int resizeResult = 0;
-    
-    // initialize gdiplus 
-    Gdiplus::GdiplusStartupInput gdiplusStartupInput;
-    ULONG_PTR gdiplusToken;
-    Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
-    
-    // make a temp_resized directory 
-    std::wstring dirName = L"temp_resized";
-    if(CreateDirectory(dirName.c_str(), NULL)){
-        // do nothing
-    }else if(ERROR_ALREADY_EXISTS == GetLastError()){
-        // if it exists, empty out the directory
-    }else{
-        // directory couldn't be made
-    }
-    
-    for(int i = 0; i < nImages; i++){
-        std::string filename = images[i];
-        std::wstring wstr = std::wstring(filename.begin(), filename.end());
-        const wchar_t *widestr = wstr.c_str();
-        
-        Gdiplus::Bitmap* bmp = new Gdiplus::Bitmap(widestr, false);
-        int h = bmp->GetHeight();
-        int w = bmp->GetWidth();
-        
-        CLSID pngClsid;
-        
-        // if dimensions of current image match the initial image and no caption text, just skip this one 
-        // but add it to the new temp directory
-        if(h == height && w == width && captionText == ""){
-            int result = getEncoderClsid(L"image/bmp", &pngClsid);
-            if(result == -1){
+            int result = getEncoderClsid(L"image/bmp", &bmpClsid);
+            if(result != -1){
+                //std::cout << "Encoder succeeded" << std::endl;
+            }else{
                 std::cout << "Encoder failed" << std::endl;
             }
-            
-            filename = "temp_resized/screen" + intToString(i) + ".bmp";
-            std::wstring fname = std::wstring(filename.begin(), filename.end());
-            bmp->Save(fname.c_str(), &pngClsid, NULL);
-            delete bmp;
-            continue;
+
+            Gdiplus::Status s = newBMP->Save(nextFrame.c_str(), &bmpClsid, NULL);
+            //std::cout << "frame save status: " << s << "\n";
+
+            delete newBMP;
         }
-        
-        // make a new empty bmp with the new dimensions
-        Gdiplus::Bitmap* newBMP = new Gdiplus::Bitmap(width, height, bmp->GetPixelFormat());
-        
-        // resize the original bmp
-        Gdiplus::Graphics graphics(newBMP); // the new bitmap is the new canvas to draw the resized image on 
-        graphics.DrawImage(bmp, 0, 0, width, height);
-    
-        // caption if there's text in the specified box 
-        if(captionText != ""){
-            std::wstring mtext = std::wstring(captionText.begin(), captionText.end());
-            const wchar_t* string = mtext.c_str(); //L"BLAH BLAH BLAH";
-            int stringLen = mtext.size();
-            
-            // decide where to place the text, x-coordinate-wise 
-            // assume each char in the string takes up 15 pixels?
-            int xCoord = (w/2) - ((stringLen*15)/2);
-            
-            Gdiplus::FontFamily impactFont(L"Impact");
-            Gdiplus::StringFormat strFormat;
-            Gdiplus::GraphicsPath gpath;       // use this to hold the outline of the string we want to draw 
-            gpath.AddString(
-                string,                        // the string
-                wcslen(string),                // length of string
-                &impactFont,                   // font family
-                FontStyleRegular,              // style of type face 
-                32,                            // font size 
-                Point(xCoord, (h/2 + h/3)),    // where to put the string 
-                &strFormat                     // layout information for the string 
-            );
-            
-            Gdiplus::Pen pen(Color(0,0,0), 2); // color and width of pen 
-            pen.SetLineJoin(LineJoinRound);    // prevent sharp pointers from occurring on some chars 
-            graphics.SetSmoothingMode(SmoothingModeAntiAlias); // antialias the text so the outline doesn't look choppy
-            graphics.DrawPath(&pen, &gpath);
-            
-            Gdiplus::SolidBrush brush(Color(255,255,255,255));
-            graphics.FillPath(&brush, &gpath);
-        }
-        
-        // overwite old file with this new one
-        int result = getEncoderClsid(L"image/bmp", &pngClsid);
-        if(result != -1){
-            //std::cout << "Encoder succeeded" << std::endl;
-        }else{
-            std::cout << "Encoder failed" << std::endl;
-        }
-        
-        // convert filename to a wstring first
-        //filename = filename.substr(0, filename.size() - 4);
-        filename = "temp_resized/screen" + intToString(i) + ".bmp";
-        std::wstring fname = std::wstring(filename.begin(), filename.end());
-        
-        newBMP->Save(fname.c_str(), &pngClsid, NULL);
-        //std::cout << "status: " << newBMP->Save(fname.c_str(), &pngClsid, NULL) << std::endl;
-        
-        resizeResult = 1;
-        
-        //delete bmp;
-        delete newBMP;
     }
-    
+
     // shutdown gdiplus 
     Gdiplus::GdiplusShutdown(gdiplusToken);
-    
-    return resizeResult;
 }
 
 /***
