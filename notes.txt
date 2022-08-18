@@ -13,17 +13,22 @@ from Visual Studio errors:
 more resources:
 https://stackoverflow.com/questions/37956090/how-to-construct-a-stdstring-with-embedded-values-i-e-string-interpolation
 https://stackoverflow.com/questions/22753328/c-error-expression-must-have-integral-or-enum-type-getting-this-from-a-s
+https://stackoverflow.com/questions/16605967/set-precision-of-stdto-string-when-converting-floating-point-values (e.g. for saturation value on the parameters page)
 
 TODO:
-- take resizeBMP function in capture.cpp and move the caption-writing functionality to the image capturing step? or use it
-  after all the images have been taken.
 - rename/replace anywhere gif is used since we won't be dealing with gifs here. maybe change it to captureFrames?
+- improve status updates in gui when processing.
+- be able to just pick a time duration in seconds to record. (but what to do about frame rate?)
 
+wasapi
+https://stackoverflow.com/questions/64318206/record-an-audio-stream-with-wasapi
 
-ffmpeg example
+ffmpeg
 https://stackoverflow.com/questions/24961127/how-to-create-a-video-from-images-with-ffmpeg
 https://stackoverflow.com/questions/20847674/ffmpeg-libx264-height-not-divisible-by-2
 https://superuser.com/questions/704744/video-produced-from-images-only-plays-in-vlc-but-no-other-players
+https://stackoverflow.com/questions/46779073/ffmpeg-video-longer-than-audio-after-having-combined-image-and-audio-to-video
+https://superuser.com/questions/1647171/ffmpeg-combine-image-audio-into-video-but-output-is-longer-than-the-audio-f
 
 - yuv420 is important (for windows at least lol)
 
