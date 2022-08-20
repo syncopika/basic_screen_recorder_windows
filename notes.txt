@@ -30,7 +30,7 @@ https://superuser.com/questions/704744/video-produced-from-images-only-plays-in-
 https://stackoverflow.com/questions/46779073/ffmpeg-video-longer-than-audio-after-having-combined-image-and-audio-to-video
 https://superuser.com/questions/1647171/ffmpeg-combine-image-audio-into-video-but-output-is-longer-than-the-audio-f
 
-- yuv420 is important (for windows at least lol)
+- yuv420 is important for the mp4 to be viewable (for windows at least lol)
 
 // about 8 frames per second when frames were collected with a 120 ms delay between each capture
 cd temp_13-08-2022_224758

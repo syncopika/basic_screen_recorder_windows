@@ -163,11 +163,6 @@ bool WriteWaveFile(HANDLE FileHandle, const BYTE* Buffer, const size_t BufferSiz
     CopyMemory(waveFilePointer, WaveFormat, sizeof(WAVEFORMATEX) + WaveFormat->cbSize);
     waveFilePointer += sizeof(WAVEFORMATEX) + WaveFormat->cbSize;
 
-    std::cout << "num channels: " << WaveFormat->nChannels << '\n';
-    std::cout << "num bits per sample: " << WaveFormat->wBitsPerSample << '\n';
-    std::cout << "num samples per sec: " << WaveFormat->nSamplesPerSec << '\n';
-    std::cout << "block align: " << WaveFormat->nBlockAlign << '\n';
-
     //
     //  Then the data header.
     //
@@ -323,9 +318,6 @@ void doAudioCapture(WASAPICapturerInfo* audioCaptureInfo) {
 }
 
 
-
-
-
 /***
 
     functions to make creating window elements easier
@@ -406,7 +398,6 @@ void createCheckBox(
     SendMessage(checkBox, WM_SETFONT, (WPARAM)hFont, true);
 }
 
-
 void doScreenCapture(WindowInfo* args){
     // TODO: this should assemble the video using the captured audio and captured images
     HWND mainWindow = args->mainWindow;
@@ -429,6 +420,114 @@ void doScreenCapture(WindowInfo* args){
     // TODO: add caption to each snapshot if needed, apply filters
 }
 
+// do all the things in a separate thread (which wil launch 2 child threads of its own)
+void doEverything(){
+    int audioDuration = captureParams.numFrames * captureParams.timeDelay; // in ms
+    int tDelay = captureParams.timeDelay;
+    std::string dirName = captureParams.tempDirectory;
+
+    // set up for audio collection
+    setUpForAudioCollection(
+        pEnumerator,
+        pDevice,
+        pAudioClient,
+        pCaptureClient,
+        pwfx
+    );
+
+    std::cout << "bits per sample: " << pwfx->wBitsPerSample << "\n";
+    std::cout << "samples per sec: " << pwfx->nSamplesPerSec << "\n";
+    std::cout << "num channels: " << pwfx->nChannels << "\n";
+    std::cout << "starting capture...\n";
+
+    CWASAPICapture* capturer = new CWASAPICapture(pDevice, true, eConsole);
+    if(capturer == NULL){
+        printf("Unable to allocate capturer\n");
+        return;
+    }
+
+    int targetLatency = 10;
+    if(capturer->Initialize(targetLatency)){
+        int targetDurationInMs = audioDuration;
+        size_t captureBufferSize = capturer->SamplesPerSecond() * ceil(targetDurationInMs / 1000) * capturer->FrameSize();
+        BYTE* captureBuffer = new BYTE[captureBufferSize];
+        std::cout << "buffer size: " << captureBufferSize << '\n';
+
+        if (captureBuffer == NULL) {
+            printf("Unable to allocate capture buffer\n");
+            return;
+        }
+
+        audioCaptureInfo.buffer = &captureBuffer;
+        audioCaptureInfo.capturer = &capturer;
+        audioCaptureInfo.durationInMs = targetDurationInMs;
+        audioCaptureInfo.outputName = std::string(dirName); // name the wav output the same as the temp directory of the snapshots
+
+        if(capturer->Start(captureBuffer, captureBufferSize)){
+            // start frame and audio capture process in child threads
+            HANDLE getFramesThread = CreateThread(NULL, 0, processScreenCaptureThread, &captureParams, 0, 0);
+            HANDLE getAudioThread = CreateThread(NULL, 0, processAudioThread, &audioCaptureInfo, 0, 0);
+            HANDLE waitArray[2] = { getFramesThread, getAudioThread };
+
+            // set max timeout time based on audio duration for now with some buffer room (that seems pretty reasonable?).
+            DWORD waitResult = WaitForMultipleObjects(2, waitArray, TRUE, audioDuration + 30000); // 30 sec buffer
+            if (waitResult >= WAIT_OBJECT_0 + 0 && waitResult < WAIT_OBJECT_0 + 2) {
+                // all child threads have completed
+                // assemble the video file using the captured screenshots and audio
+                std::cout << "data collection done. creating the video file for: " << dirName << "...\n";
+
+                float framerate = 1000 / tDelay; // frames per sec
+
+                // example: ffmpeg -framerate 8.3 -i ./temp_14-08-2022_183147/screen%d.bmp -i temp_14-08-2022_183147.wav -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v libx264 -pix_fmt yuv420p -r 8 testing.mp4
+                std::string command(
+                    std::string("ffmpeg ") +
+                    std::string(" -framerate ") +
+                    std::to_string(framerate).c_str() +
+                    std::string(" -i ./") +
+                    dirName +
+                    std::string("/screen%d.bmp") +
+                    std::string(" -i ") +
+                    dirName +
+                    std::string(".wav") +
+                    std::string(" -vf \"pad=ceil(iw/2)*2:ceil(ih/2)*2\"") +
+                    std::string(" -c:v libx264 -pix_fmt yuv420p ") +
+                    std::string(" -r ") +
+                    std::to_string(framerate).c_str() +
+                    std::string(" ") + // can try -shortest flag if needed
+                    dirName +
+                    std::string(".mp4")
+                );
+
+                std::cout << "attempting to run: " << command << "\n";
+
+                int res = system(command.c_str());
+                if (res != 0) {
+                    // TODO: post a message on the UI about failure
+                    std::cout << "processing failed :( do you have ffmpeg? \n";
+                }
+                else {
+                    std::cout << "processing complete :)\n";
+
+                    // TODO: cleanup. delete the images and wav file (or make this optional via the GUI?)
+                    if (captureParams.cleanupFiles) {
+                        for (int i = 0; i < captureParams.numFrames; i++) {
+                            // delete each file first
+                            DeleteFileA((dirName + "/screen" + std::to_string(i) + ".bmp").c_str());
+                        }
+                        // delete the dir
+                        RemoveDirectoryA(dirName.c_str());
+
+                        // delete the wav file
+                        DeleteFileA((dirName + ".wav").c_str());
+
+                        std::cout << "done cleaning up!\n";
+                    }
+                }
+            }
+        }
+    }
+}
+
 
 /***
 
@@ -447,10 +546,21 @@ DWORD WINAPI processScreenCaptureThread(LPVOID windowInfo){
     pass it a pointer to a struct that contains parameters needed for collecting the audio
 
 ***/
-DWORD WINAPI processAudioThread(LPVOID audioCaptureInfo) {
+DWORD WINAPI processAudioThread(LPVOID audioCaptureInfo){
     doAudioCapture((WASAPICapturerInfo*)audioCaptureInfo);
     return 0;
 }
+
+/***
+
+    this function does all the things in a new thread (and spawns 2 child threads for audio and screen capture).
+
+***/
+DWORD WINAPI doEverythingThread(LPVOID args){
+    doEverything();
+    return 0;
+}
+
 
 
 /***
@@ -641,112 +751,7 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
                     delete[] captext;
 
-                    // set up for audio collection
-                    setUpForAudioCollection(
-                        pEnumerator,
-                        pDevice,
-                        pAudioClient,
-                        pCaptureClient,
-                        pwfx
-                    );
-
-                    // calculate duration of audio to record based on num frames and tDelay
-                    int audioDuration = nFrames * tDelay; // in ms
-
-                    std::cout << "bits per sample: " << pwfx->wBitsPerSample << "\n";
-                    std::cout << "samples per sec: " << pwfx->nSamplesPerSec << "\n";
-                    std::cout << "num channels: " << pwfx->nChannels << "\n";
-                    std::cout << "starting capture...\n";
-
-                    int targetLatency = 10;
-                    CWASAPICapture* capturer = new CWASAPICapture(pDevice, true, eConsole);
-                    if(capturer == NULL){
-                        printf("Unable to allocate capturer\n");
-                        return -1;
-                    }
-
-                    if(capturer->Initialize(targetLatency)){
-                        int targetDurationInMs = audioDuration;
-                        size_t captureBufferSize = capturer->SamplesPerSecond() * ceil(targetDurationInMs / 1000) * capturer->FrameSize();
-                        BYTE* captureBuffer = new BYTE[captureBufferSize];
-                        std::cout << "buffer size: " << captureBufferSize << '\n';
-
-                        if(captureBuffer == NULL){
-                            printf("Unable to allocate capture buffer\n");
-                            return -1;
-                        }
-
-                        audioCaptureInfo.buffer = &captureBuffer;
-                        audioCaptureInfo.capturer = &capturer;
-                        audioCaptureInfo.durationInMs = targetDurationInMs;
-                        audioCaptureInfo.outputName = std::string(dirName); // name the wav output the same as the temp directory of the snapshots
-
-                        if(capturer->Start(captureBuffer, captureBufferSize)){
-                            // start frame and audio capture process in child threads
-                            HANDLE getFramesThread = CreateThread(NULL, 0, processScreenCaptureThread, &captureParams, 0, 0);
-                            HANDLE getAudioThread = CreateThread(NULL, 0, processAudioThread, &audioCaptureInfo, 0, 0);
-                            HANDLE waitArray[2] = { getFramesThread, getAudioThread };
-
-                            // set max timeout time based on audio duration for now with some buffer room (that seems pretty reasonable?).
-                            DWORD waitResult = WaitForMultipleObjects(2, waitArray, TRUE, audioDuration + 30000); // 30 sec buffer
-                            if(waitResult >= WAIT_OBJECT_0 + 0 && waitResult < WAIT_OBJECT_0 + 2){
-                                // all child threads have completed
-                                // assemble the video file using the captured screenshots and audio
-                                std::cout << "data collection done. creating the video file for: " <<  dirName << "...\n";
-
-                                float framerate = 1000 / tDelay; // frames per sec
-
-                                // example: ffmpeg -framerate 8.3 -i ./temp_14-08-2022_183147/screen%d.bmp -i temp_14-08-2022_183147.wav -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v libx264 -pix_fmt yuv420p -r 8 testing.mp4
-                                std::string command(
-                                    std::string("ffmpeg ") +
-                                    std::string(" -framerate ") + 
-                                    std::to_string(framerate).c_str() +
-                                    std::string(" -i ./") +
-                                    dirName +
-                                    std::string("/screen%d.bmp") +
-                                    std::string(" -i ") +
-                                    dirName +
-                                    std::string(".wav") +
-                                    std::string(" -vf \"pad=ceil(iw/2)*2:ceil(ih/2)*2\"") +
-                                    std::string(" -c:v libx264 -pix_fmt yuv420p ") +
-                                    std::string(" -r ") +
-                                    std::to_string(framerate).c_str() +
-                                    std::string(" ") + // can try -shortest flag if needed
-                                    dirName +
-                                    std::string(".mp4")
-                                );
-
-                                std::cout << "attempting to run: " << command << "\n";
-
-                                int res = system(command.c_str());
-                                if(res != 0){
-                                    // TODO: post a message on the UI about failure
-                                    std::cout << "processing failed :( do you have ffmpeg? \n";
-                                }else{
-                                    std::cout << "processing complete :)\n";
-
-                                    // TODO: cleanup. delete the images and wav file (or make this optional via the GUI?)
-                                    if(captureParams.cleanupFiles){
-                                        for (int i = 0; i < captureParams.numFrames; i++) {
-                                            // delete each file first
-                                            DeleteFileA((dirName + "/screen" + std::to_string(i) + ".bmp").c_str());
-                                        }
-                                        // delete the dir
-                                        RemoveDirectoryA(dirName.c_str());
-
-                                        // delete the wav file
-                                        DeleteFileA((dirName + ".wav").c_str());
-
-                                        std::cout << "done cleaning up!\n";
-                                    }
-                                }
-                            }
-                        }else{
-                            delete[] captureBuffer;
-                        }
-
-                    }
-                   
+                    CreateThread(NULL, 0, doEverythingThread, NULL, 0, 0);
                 }
                 break;
             }
@@ -785,7 +790,7 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         
         case ID_COLLECTING_IMAGES:
         {
-            SetDlgItemText(hwnd, ID_PROGRESS_MSG, L"collecting images...");
+            SetDlgItemText(hwnd, ID_PROGRESS_MSG, L"capturing...");
         }
         break;
         

@@ -128,6 +128,8 @@ void getSnapshots(
     // get temp directory 
     std::string dirName = captureParams->tempDirectory;
 
+    PostMessage(mainWindow, ID_COLLECTING_IMAGES, NULL, 0);
+
     std::string name;
     for(int i = 0; i < nImages; i++){
         // put all images in temp folder
@@ -156,10 +158,6 @@ void getSnapshots(
             // apply filter
             if(captureParams->selectedFilter != 0){
                 std::vector<uint8_t> img = (*filter)(nextFrame, captureParams);
-
-                //std::cout << "image height: " << h << "\n";
-                //std::cout << "image width: " << w << "\n";
-                //std::cout << "image data length: " << img.size() << "\n";
 
                 // need to cycle through the pixels of bmp to edit
                 for(int j = 0; j < height; j++){
