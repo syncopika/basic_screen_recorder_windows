@@ -21,7 +21,7 @@
 
 // struct to provide arguments needed for snapshots
 struct WindowInfo {
-	int numFrames;
+	int duration;
 	int timeDelay;
 	int selectedFilter; // this is the index of the filter in the dropdown box 
 	std::string directory; // this was for selecting a directory to read bmps from but can probably be removed now
