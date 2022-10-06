@@ -404,7 +404,7 @@ void doScreenCapture(WindowInfo* args){
     
     PostMessage(mainWindow, ID_IN_PROGRESS, 0, 0);
     
-    int nFrames = args->numFrames;
+    int nFrames = (int)floor((args->duration * 1000) / args->timeDelay);
     int tDelay = args->timeDelay;
     
     std::string theDir = args->directory;
@@ -422,7 +422,7 @@ void doScreenCapture(WindowInfo* args){
 
 // do all the things in a separate thread (which wil launch 2 child threads of its own)
 void doEverything(){
-    int audioDuration = captureParams.numFrames * captureParams.timeDelay; // in ms
+    int audioDuration = captureParams.duration * 1000; // in ms
     int tDelay = captureParams.timeDelay;
     std::string dirName = captureParams.tempDirectory;
 
@@ -510,7 +510,10 @@ void doEverything(){
 
                     // TODO: cleanup. delete the images and wav file (or make this optional via the GUI?)
                     if (captureParams.cleanupFiles) {
-                        for (int i = 0; i < captureParams.numFrames; i++) {
+
+                        int numFrames = (int)floor((captureParams.duration*1000) / captureParams.timeDelay);
+
+                        for (int i = 0; i < numFrames; i++) {
                             // delete each file first
                             DeleteFileA((dirName + "/screen" + std::to_string(i) + ".bmp").c_str());
                         }
@@ -680,24 +683,24 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                 case ID_START_BUTTON:
                 {
                     // get the parameters 
-                    HWND frames = GetDlgItem(hwnd, ID_NUMFRAMES_TEXTBOX);
+                    HWND duration = GetDlgItem(hwnd, ID_DURATION_TEXTBOX);
                     HWND delay = GetDlgItem(hwnd, ID_DELAY_TEXTBOX);
                     
-                    wchar_t numFrames[3];
+                    wchar_t durationAmount[3];
                     wchar_t timeDelay[5];
                     
                     // because numFrames and timeDelay are initialized as arrays, we can use sizeof to get the number of bytes they occupy
-                    GetWindowText(frames, numFrames, sizeof(numFrames));
+                    GetWindowText(duration, durationAmount, sizeof(durationAmount));
                     GetWindowText(delay, timeDelay, sizeof(timeDelay));
                     
-                    int nFrames = _wtoi(numFrames);
+                    int dur = _wtoi(durationAmount);
                     int tDelay = _wtoi(timeDelay);
                     
                     // validate values!! 
-                    if(nFrames < 1){
-                        nFrames = 1;
-                    }else if(nFrames > 50){
-                        nFrames = 50;
+                    if(dur < 1){
+                        dur = 1;
+                    }else if(dur > 10){
+                        dur = 10;
                     }
                     
                     if(tDelay < 10){
@@ -742,7 +745,7 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                     }
 
                     captureParams.tempDirectory = dirName;
-                    captureParams.numFrames = nFrames;
+                    captureParams.duration = dur;
                     captureParams.timeDelay = tDelay;
                     captureParams.selectedFilter = currFilterIndex;
                     captureParams.directory = std::string("");
@@ -1113,9 +1116,9 @@ LRESULT CALLBACK WndProcAboutPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
 ***/
 void createMainScreen(HWND hwnd, HINSTANCE hInstance){
     // set num frames to collect
-    createLabel(L"# frames to get: ", 110, 20, 10, 20, hwnd, hInstance, (HMENU)ID_NUMFRAMES_LABEL, hFont);
-    createEditBox(L"10", 80, 20, 110, 20, hwnd, hInstance, (HMENU)ID_NUMFRAMES_TEXTBOX, hFont);
-    createLabel(L"1 <= frames <= 50", 130, 20, 210, 20, hwnd, hInstance, NULL, hFont);
+    createLabel(L"duration (sec): ", 140, 20, 10, 20, hwnd, hInstance, (HMENU)ID_DURATION_LABEL, hFont);
+    createEditBox(L"5", 80, 20, 110, 20, hwnd, hInstance, (HMENU)ID_DURATION_TEXTBOX, hFont);
+    createLabel(L"1 <= duration <= 10", 130, 20, 210, 20, hwnd, hInstance, NULL, hFont);
     
     // set gif frame delay time
     createLabel(L"# delay (ms): ", 100, 20, 10, 50, hwnd, hInstance, (HMENU)ID_DELAY_LABEL, hFont);
