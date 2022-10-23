@@ -1120,8 +1120,8 @@ void createMainScreen(HWND hwnd, HINSTANCE hInstance){
     createEditBox(L"5", 80, 20, 110, 20, hwnd, hInstance, (HMENU)ID_DURATION_TEXTBOX, hFont);
     createLabel(L"1 <= duration <= 10", 130, 20, 210, 20, hwnd, hInstance, NULL, hFont);
     
-    // set gif frame delay time
-    createLabel(L"# delay (ms): ", 100, 20, 10, 50, hwnd, hInstance, (HMENU)ID_DELAY_LABEL, hFont);
+    // set interval between frames
+    createLabel(L"interval (ms): ", 100, 20, 10, 50, hwnd, hInstance, (HMENU)ID_DELAY_LABEL, hFont);
     createEditBox(L"120", 80, 20, 110, 50, hwnd, hInstance, (HMENU)ID_DELAY_TEXTBOX, hFont);
     createLabel(L"10 <= ms <= 1000", 130, 20, 210, 50, hwnd, hInstance, NULL, hFont);
     
@@ -1283,7 +1283,7 @@ void createAboutPage(HWND hwnd, HINSTANCE hInstance){
     HWND title;
     title = CreateWindow(
         TEXT("STATIC"),
-        TEXT(" \n    An application for catching and creating gifs!\n    Thanks for checking it out! :)\n\n\n    (c) nch 2019 | https://github.com/syncopika\n\n"),
+        TEXT(" \n    An application for screen capturing with audio.\n    Currently requires ffmpeg.\n\n\n    (c) nch 2022 | https://github.com/syncopika\n\n"),
         WS_VISIBLE | WS_CHILD,
         0, 0,
         400, 450,
