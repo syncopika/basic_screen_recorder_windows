@@ -24,6 +24,9 @@ struct WindowInfo {
 	int duration;
 	int timeDelay;
 	int selectedFilter; // this is the index of the filter in the dropdown box 
+
+	bool ffmpegExists;
+
 	std::string directory; // this was for selecting a directory to read bmps from but can probably be removed now
 	std::string tempDirectory; // the directory to place snapshots in
 	std::wstring captionText;

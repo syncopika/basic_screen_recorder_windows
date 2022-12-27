@@ -1,20 +1,7 @@
-/**
-    idea: take a bunch of screenshots in sequence (with interval as n milliseconds), 
-    create gif from screenshots
-
-    have a GUI, user inputs 3 args
-    - pre-delay, milliseconds (give the user some time to minimize the gui window if they want a gif that is full screen)
-    - number of frames to collect 
-    - interval between screenshots, in milliseconds (10 <= n <= 1000 ms) cap it at 1000
-
-    maybe give fps option and length of gif, not choose delay and number of frames.
-
-    check out resources.txt in the main directory outside this one for helpful links/resources!
-    
-*/
 #include "framework.h"
 #include "capture_gui.hh"
 #include <shlobj.h>
+#include <filesystem>
 
 #define SAFE_RELEASE(punk)  \
               if ((punk) != NULL)  \
@@ -413,7 +400,6 @@ void doScreenCapture(WindowInfo* args){
     // indicate process started 
     PostMessage(mainWindow, ID_IN_PROGRESS, 0, 0);
 
-    // this applies to gif-generation from a specified part of the screen (not using already made images)
     getSnapshots(nFrames, tDelay, x1Pos, y1Pos, (x2Pos-x1Pos), (y2Pos-y1Pos), getBMPImageData, args);
     PostMessage(mainWindow, ID_FINISHED, 0, 0);
 
@@ -453,7 +439,7 @@ void doEverything(){
         BYTE* captureBuffer = new BYTE[captureBufferSize];
         std::cout << "buffer size: " << captureBufferSize << '\n';
 
-        if (captureBuffer == NULL) {
+        if(captureBuffer == NULL){
             printf("Unable to allocate capture buffer\n");
             return;
         }
@@ -471,8 +457,32 @@ void doEverything(){
 
             // set max timeout time based on audio duration for now with some buffer room (that seems pretty reasonable?).
             DWORD waitResult = WaitForMultipleObjects(2, waitArray, TRUE, audioDuration + 30000); // 30 sec buffer
-            if (waitResult >= WAIT_OBJECT_0 + 0 && waitResult < WAIT_OBJECT_0 + 2) {
+            if(waitResult >= WAIT_OBJECT_0 + 0 && waitResult < WAIT_OBJECT_0 + 2){
                 // all child threads have completed
+
+                if(!captureParams.ffmpegExists){
+                    // TODO: post msg that audio + images collected + no ffmpeg so finished?
+                    std::cout << "done capturing images and audio!\n";
+
+                    if (captureParams.cleanupFiles) {
+                        int numFrames = (int)floor((captureParams.duration * 1000) / captureParams.timeDelay);
+
+                        for (int i = 0; i < numFrames; i++) {
+                            // delete each file first
+                            DeleteFileA((dirName + "/screen" + std::to_string(i) + ".bmp").c_str());
+                        }
+                        // delete the dir
+                        RemoveDirectoryA(dirName.c_str());
+
+                        // delete the wav file
+                        DeleteFileA((dirName + ".wav").c_str());
+
+                        std::cout << "done cleaning up!\n";
+                    }
+
+                    return;
+                }
+
                 // assemble the video file using the captured screenshots and audio
                 std::cout << "data collection done. creating the video file for: " << dirName << "...\n";
 
@@ -500,17 +510,15 @@ void doEverything(){
 
                 std::cout << "attempting to run: " << command << "\n";
 
+                // TODO: need to test when ffmpeg not available. I think if ffmpeg is not available there still would be a non-zero value returned.
                 int res = system(command.c_str());
-                if (res != 0) {
+                if(res != 0){
                     // TODO: post a message on the UI about failure
                     std::cout << "processing failed :( do you have ffmpeg? \n";
-                }
-                else {
+                }else{
                     std::cout << "processing complete :)\n";
 
-                    // TODO: cleanup. delete the images and wav file (or make this optional via the GUI?)
-                    if (captureParams.cleanupFiles) {
-
+                    if(captureParams.cleanupFiles){
                         int numFrames = (int)floor((captureParams.duration*1000) / captureParams.timeDelay);
 
                         for (int i = 0; i < numFrames; i++) {
@@ -535,7 +543,7 @@ void doEverything(){
 /***
 
     this function, which does the screen capture, is executed by a new thread.
-    pass it a pointer to a struct that contains parameters for creating the gif
+    pass it a pointer to a struct that contains the customizable options
 
 ***/
 DWORD WINAPI processScreenCaptureThread(LPVOID windowInfo){
@@ -770,12 +778,6 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         case ID_FINISHED:
         {
             SetDlgItemText(hwnd, ID_PROGRESS_MSG, L"processing successful!");
-        }
-        break;
-        
-        case ID_ASSEMBLING_GIF:
-        {
-            SetDlgItemText(hwnd, ID_PROGRESS_MSG, L"assembling gif...");
         }
         break;
         
@@ -1153,10 +1155,10 @@ void createMainScreen(HWND hwnd, HINSTANCE hInstance){
     SendMessage(filterComboBox, CB_SETCURSEL, (WPARAM)0, (LPARAM)0);
     
     /* 
-        let user add a caption to their gif. for now, it'll be a bit limited in that the text 
-        will automatically be placed towards the bottom of the gif. 
+        let user add a caption to the result. for now, it'll be a bit limited in that the text 
+        will automatically be placed towards the bottom. 
         it will however, be centered (and so some calculations are needed)
-        the amount of text will vary depending on gif size as well
+        the amount of text will vary depending on image size as well
         font will also be Impact and size will be determined by program 
     */
     createLabel(
@@ -1199,7 +1201,7 @@ void createMainScreen(HWND hwnd, HINSTANCE hInstance){
     );
     SendMessage(startButton, WM_SETFONT, (WPARAM)hFont, true);
     
-    // text indicator/message for gif processing progress
+    // text indicator/message for processing progress
     HWND progressBar = CreateWindow(
         TEXT("STATIC"),
         TEXT(""),
@@ -1258,7 +1260,7 @@ void createParameterPage(HWND hwnd, HINSTANCE hInstance){
     createLabel(L"set blur factor: ", 170, 20, 10, 205, hwnd, hInstance, NULL, hFont);
     createEditBox(L"3", 50, 20, 210, 205, hwnd, hInstance, (HMENU)ID_SET_BLUR, hFont);
 
-    // set whether the gif should capture the cursor or not
+    // set whether to capture the cursor or not
     createCheckBox(L"capture screen cursor", 180, 50, 10, 230, hwnd, hInstance, (HMENU)ID_GET_CURSOR, hFont);
 
     // whether the captured frames (.bmps) and audio (.wav) should be deleted after video creation
@@ -1306,6 +1308,34 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     FILE* stream;
     AllocConsole();
     freopen_s(&stream, "CON", "w", stdout);
+
+    char psBuffer[128];
+    FILE* pPipe;
+    bool ffmpegExists = false;
+
+    // check for existence of ffmpeg via where command
+    if((pPipe = _popen("where ffmpeg", "rt")) == NULL){
+        exit(1);
+    }
+    
+    fgets(psBuffer, 128, pPipe);
+    //printf(psBuffer);
+
+    // if "where ffmpeg" can't find ffmpeg, I get the following output in the console:
+    // 'INFO: Could not find files for the given pattern(s).'
+    // not seeing that output in the buffer though if I try something like "where asdf"
+    // so guessing that the buffer might be empty and INFO is coming from somewhere else?
+    // _pclose seems to return 1 when where fails to find a path (e.g. with "where asdf")
+    // and 0 when a path is found so maybe I can use that
+
+    int pclose = _pclose(pPipe);
+    //printf("process returned %d\n", pclose);
+
+    if(pclose == 0){
+        ffmpegExists = true;
+    }else{
+        std::cout << "ffmpeg not found on PATH!\n";
+    }
     
     // add some default parameters to captureParams immediately
     captureParams.filters = filterMap;
@@ -1317,6 +1347,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     captureParams.blurFactor = 3;
     captureParams.getCursor = false;
     captureParams.cleanupFiles = false;
+    captureParams.ffmpegExists = ffmpegExists;
     
     // for improving the gui appearance (buttons, that is. the font needs to be changed separately) 
     INITCOMMONCONTROLSEX icc;

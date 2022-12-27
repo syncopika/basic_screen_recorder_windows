@@ -2,9 +2,6 @@
 
 #include "capture.hh"    // function declarations
 
-// probably should convert to non-namespace later 
-using namespace Gdiplus;
-
 // convert an integer to string 
 std::string intToString(int i){
     std::stringstream ss;
@@ -17,19 +14,19 @@ int getEncoderClsid(const WCHAR* format, CLSID* pClsid){
     UINT num = 0;          // number of image encoders
     UINT size = 0;         // size of the image encoder array in bytes
 
-    ImageCodecInfo* pImageCodecInfo = NULL;
+    Gdiplus::ImageCodecInfo* pImageCodecInfo = NULL;
 
-    GetImageEncodersSize(&num, &size);
+    Gdiplus::GetImageEncodersSize(&num, &size);
     if(size == 0){
         return -1;  // Failure
     }
 
-    pImageCodecInfo = (ImageCodecInfo*)(malloc(size));
+    pImageCodecInfo = (Gdiplus::ImageCodecInfo*)(malloc(size));
     if(pImageCodecInfo == NULL){
         return -1;  // Failure
     }
 
-    GetImageEncoders(num, size, pImageCodecInfo);
+    Gdiplus::GetImageEncoders(num, size, pImageCodecInfo);
 
     for(UINT j = 0; j < num; ++j){
         if( wcscmp(pImageCodecInfo[j].MimeType, format) == 0 ){
@@ -121,9 +118,9 @@ void getSnapshots(
     HWND mainWindow = captureParams->mainWindow;
 
     // Initialize GDI+.
-    GdiplusStartupInput gdiplusStartupInput;
+    Gdiplus::GdiplusStartupInput gdiplusStartupInput;
     ULONG_PTR gdiplusToken;
-    GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+    Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
 
     // get temp directory 
     std::string dirName = captureParams->tempDirectory;
@@ -166,7 +163,7 @@ void getSnapshots(
                         int g = img[(4 * j * width) + (4 * k) + 1];
                         int b = img[(4 * j * width) + (4 * k) + 2];
                         int alpha = img[(4 * j * width) + (4 * k) + 3];
-                        bmp->SetPixel(k, j, (Color::MakeARGB(alpha, r, g, b)));
+                        bmp->SetPixel(k, j, (Gdiplus::Color::MakeARGB(alpha, r, g, b)));
                     }
                 }
             }
@@ -195,18 +192,18 @@ void getSnapshots(
                     string,                        // the string
                     wcslen(string),                // length of string
                     &impactFont,                   // font family
-                    FontStyleRegular,              // style of type face
+                    Gdiplus::FontStyleRegular,     // style of type face
                     32,                            // font size
-                    Point(xCoord, (height / 2 + height / 3)),    // where to put the string
+                    Gdiplus::Point(xCoord, (height / 2 + height / 3)),    // where to put the string
                     &strFormat                     // layout information for the string
                 );
 
-                Gdiplus::Pen pen(Color(0, 0, 0), 2); // color and width of pen
-                pen.SetLineJoin(LineJoinRound);    // prevent sharp pointers from occurring on some chars
-                graphics.SetSmoothingMode(SmoothingModeAntiAlias); // antialias the text so the outline doesn't look choppy
+                Gdiplus::Pen pen(Gdiplus::Color(0, 0, 0), 2); // color and width of pen
+                pen.SetLineJoin(Gdiplus::LineJoinRound);    // prevent sharp pointers from occurring on some chars
+                graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias); // antialias the text so the outline doesn't look choppy
                 graphics.DrawPath(&pen, &gpath);
 
-                Gdiplus::SolidBrush brush(Color(255, 255, 255, 255));
+                Gdiplus::SolidBrush brush(Gdiplus::Color(255, 255, 255, 255));
                 graphics.FillPath(&brush, &gpath);
             }
 
@@ -239,10 +236,9 @@ void getSnapshots(
     also applies a filter to images if needed 
 
 ***/
-// get a bmp image and extract the image data into a uint8_t array 
-// which will be passed to gif functions from gif.h to create the gif 
-std::vector<uint8_t> getBMPImageData(const std::wstring& filename, WindowInfo* gifParams){
-    std::wstring filtername = (gifParams->filters)[gifParams->selectedFilter];
+// get a bmp image and extract the image data into a uint8_t array
+std::vector<uint8_t> getBMPImageData(const std::wstring& filename, WindowInfo* options){
+    std::wstring filtername = (options->filters)[options->selectedFilter];
     
     // bmps have a 54 byte header 
     static constexpr size_t HEADER_SIZE = 54;
@@ -363,16 +359,15 @@ std::vector<uint8_t> getBMPImageData(const std::wstring& filename, WindowInfo* g
         return finalImageData;
     }
 
-    // use gifParams to get specific parameters for specific filters
     if(filtername == L"inverted")     inversionFilter(finalImageData);
-    if(filtername == L"saturated")    saturationFilter(gifParams->saturationValue, finalImageData);
+    if(filtername == L"saturated")    saturationFilter(options->saturationValue, finalImageData);
     if(filtername == L"weird")        weirdFilter(finalImageData);
     if(filtername == L"grayscale")    grayscaleFilter(finalImageData);
     if(filtername == L"edge_detect")  edgeDetectionFilter(finalImageData, (int)width, (int)height);
-    if(filtername == L"mosaic")       mosaicFilter(finalImageData, (int)width, (int)height, gifParams->mosaicChunkSize);
-    if(filtername == L"outline")      outlineFilter(finalImageData, (int)width, (int)height, gifParams->outlineColorDiffLimit);
-    if(filtername == L"voronoi")      voronoiFilter(finalImageData, (int)width, (int)height, gifParams->voronoiNeighborConstant);
-    if(filtername == L"blur")         blurFilter(finalImageData, (int)width, (int)height, (double)gifParams->blurFactor); // TODO: just change blur factor to int?
+    if(filtername == L"mosaic")       mosaicFilter(finalImageData, (int)width, (int)height, options->mosaicChunkSize);
+    if(filtername == L"outline")      outlineFilter(finalImageData, (int)width, (int)height, options->outlineColorDiffLimit);
+    if(filtername == L"voronoi")      voronoiFilter(finalImageData, (int)width, (int)height, options->voronoiNeighborConstant);
+    if(filtername == L"blur")         blurFilter(finalImageData, (int)width, (int)height, (double)options->blurFactor);
     
     return finalImageData;
 }
