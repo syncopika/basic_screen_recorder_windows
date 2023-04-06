@@ -275,6 +275,11 @@ void doAudioCapture(WASAPICapturerInfo* audioCaptureInfo) {
     BYTE* captureBuffer = *(audioCaptureInfo->buffer);
     std::cout << "do audio capture start\n";
 
+    // TODO: allowing only integer duration feels pretty restrictive
+    // and might capture more audio/screentime than desired.
+    //
+    // maybe we should allow users to stop recording arbitrarily
+    // and then we can also remove the cap on duration time
     int targetDurationInMs = audioCaptureInfo->durationInMs;
 
     // maybe this isn't a good idea but try converting ms to s.
@@ -455,8 +460,7 @@ void doEverything(){
             HANDLE getAudioThread = CreateThread(NULL, 0, processAudioThread, &audioCaptureInfo, 0, 0);
             HANDLE waitArray[2] = { getFramesThread, getAudioThread };
 
-            // set max timeout time based on audio duration for now with some buffer room (that seems pretty reasonable?).
-            DWORD waitResult = WaitForMultipleObjects(2, waitArray, TRUE, audioDuration + 30000); // 30 sec buffer
+            DWORD waitResult = WaitForMultipleObjects(2, waitArray, TRUE, INFINITE);
             if(waitResult >= WAIT_OBJECT_0 + 0 && waitResult < WAIT_OBJECT_0 + 2){
                 // all child threads have completed
 
@@ -486,7 +490,7 @@ void doEverything(){
                 // assemble the video file using the captured screenshots and audio
                 std::cout << "data collection done. creating the video file for: " << dirName << "...\n";
 
-                float framerate = 1000 / tDelay; // frames per sec
+                float framerate = 1000.0f / tDelay; // frames per sec
 
                 // example: ffmpeg -framerate 8.3 -i ./temp_14-08-2022_183147/screen%d.bmp -i temp_14-08-2022_183147.wav -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v libx264 -pix_fmt yuv420p -r 8 testing.mp4
                 std::string command(
@@ -704,11 +708,12 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                     int dur = _wtoi(durationAmount);
                     int tDelay = _wtoi(timeDelay);
                     
-                    // validate values!! 
+                    // validate values!!
+                    // TODO: #define max/min values?
                     if(dur < 1){
                         dur = 1;
-                    }else if(dur > 10){
-                        dur = 10;
+                    }else if(dur > 30){
+                        dur = 30;
                     }
                     
                     if(tDelay < 10){
@@ -863,8 +868,8 @@ LRESULT CALLBACK WndProcParameterPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                         HWND saturation = GetDlgItem(hwnd, ID_SET_SATURATION);
                         CHAR saturationValue[5];
                         GetWindowTextA(saturation, saturationValue, sizeof(saturationValue));
-                        float satVal = atof(saturationValue);
-                        captureParams.saturationValue = satVal > 10.0 ? 10.0 : satVal;
+                        float satVal = strtof(saturationValue, NULL);
+                        captureParams.saturationValue = satVal > 10.0f ? 10.0f : satVal;
                         SetDlgItemTextA(hwnd, ID_SET_SATURATION, floatToString(captureParams.saturationValue).c_str());
                         
                         // get the mosaic chunk size value
@@ -1079,17 +1084,6 @@ LRESULT CALLBACK WndProcSelection(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
 
 LRESULT CALLBACK WndProcAboutPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam){
     switch(msg){
-        case WM_LBUTTONDOWN:
-        {
-            case WM_COMMAND:
-            {
-                switch(LOWORD(wParam)){
-                }
-            }
-            break;
-        }
-        break;
-        
         case WM_CLOSE:
         {
             DestroyWindow(hwnd);
@@ -1117,10 +1111,11 @@ LRESULT CALLBACK WndProcAboutPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
     and an HINSTANCE
 ***/
 void createMainScreen(HWND hwnd, HINSTANCE hInstance){
-    // set num frames to collect
+    // set duration to record in seconds
+    // TODO: does there really need to be a limit? would need to test first (the num of frames captured could blow up and not sure if that might break things?)
     createLabel(L"duration (sec): ", 140, 20, 10, 20, hwnd, hInstance, (HMENU)ID_DURATION_LABEL, hFont);
     createEditBox(L"5", 80, 20, 110, 20, hwnd, hInstance, (HMENU)ID_DURATION_TEXTBOX, hFont);
-    createLabel(L"1 <= duration <= 10", 130, 20, 210, 20, hwnd, hInstance, NULL, hFont);
+    createLabel(L"1 <= duration <= 30", 130, 20, 210, 20, hwnd, hInstance, NULL, hFont);
     
     // set interval between frames
     createLabel(L"interval (ms): ", 100, 20, 10, 50, hwnd, hInstance, (HMENU)ID_DELAY_LABEL, hFont);
@@ -1340,7 +1335,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // add some default parameters to captureParams immediately
     captureParams.filters = filterMap;
     captureParams.selectionWindowColor = COLOR;
-    captureParams.saturationValue = 2.1;
+    captureParams.saturationValue = 2.1f;
     captureParams.mosaicChunkSize = 30;
     captureParams.outlineColorDiffLimit = 10;
     captureParams.voronoiNeighborConstant = 30;
