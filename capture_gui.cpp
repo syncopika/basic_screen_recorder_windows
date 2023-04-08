@@ -1,7 +1,6 @@
 #include "framework.h"
 #include "capture_gui.hh"
 #include <shlobj.h>
-#include <filesystem>
 
 #define SAFE_RELEASE(punk)  \
               if ((punk) != NULL)  \
@@ -685,6 +684,9 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                         (255 * 70) / 100, 
                         LWA_ALPHA
                     );
+
+                    // remove title bar so the top of screen can be selected
+                    SetWindowLongPtr(selectionWindow, GWL_STYLE, 0);
                     
                     // show window
                     ShowWindow(selectionWindow, SW_MAXIMIZE);
