@@ -31,6 +31,7 @@ struct WASAPICapturerInfo {
 	BYTE** buffer;
 	int durationInMs;
 	std::string outputName;
+	HWND mainWindow; // main window that contains a status box to update
 };
 
 std::string floatToString(float f);
@@ -76,6 +77,19 @@ void createCheckBox(
 	HINSTANCE hInstance, 
 	HMENU elementId, 
 	HFONT hFont
+);
+
+void createRadioButton(
+	std::wstring defaultText,
+	int width,
+	int height,
+	int xCoord,
+	int yCoord,
+	HWND parent,
+	HINSTANCE hInstance,
+	HMENU elementId,
+	HFONT hFont,
+	bool checked=false
 );
 
 COLORREF getSelectedColor(HWND selectBox);

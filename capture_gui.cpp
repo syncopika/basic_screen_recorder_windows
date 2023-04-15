@@ -1,7 +1,6 @@
 #include "framework.h"
 #include "capture_gui.hh"
 #include <shlobj.h>
-#include <filesystem>
 
 #define SAFE_RELEASE(punk)  \
               if ((punk) != NULL)  \
@@ -270,46 +269,6 @@ void setUpForAudioCollection(
     );
 }
 
-void doAudioCapture(WASAPICapturerInfo* audioCaptureInfo) {
-    CWASAPICapture* capturer = *(audioCaptureInfo->capturer);
-    BYTE* captureBuffer = *(audioCaptureInfo->buffer);
-    std::cout << "do audio capture start\n";
-
-    // TODO: allowing only integer duration feels pretty restrictive
-    // and might capture more audio/screentime than desired.
-    //
-    // maybe we should allow users to stop recording arbitrarily
-    // and then we can also remove the cap on duration time
-    int targetDurationInMs = audioCaptureInfo->durationInMs;
-
-    // maybe this isn't a good idea but try converting ms to s.
-    float durationInSec = ceil(targetDurationInMs / 1000.f);
-    if(durationInSec < 1) durationInSec = 1;
-
-    int targetDurationInSec = (int)durationInSec;
-
-    do {
-        Sleep(1000);
-    } while (--targetDurationInSec);
-
-    capturer->Stop();
-
-    //
-    //  We've now captured our wave data.  Now write it out in a wave file.
-    //
-    std::cout << "got the audio data. writing to file now...\n";
-    std::cout << "wav filename: " << audioCaptureInfo->outputName << "\n";
-    SaveWaveData(captureBuffer, capturer->BytesCaptured(), capturer->MixFormat(), audioCaptureInfo->outputName);
-
-    //
-    //  Now shut down the capturer and release it we're done.
-    //
-    capturer->Shutdown();
-    SAFE_RELEASE(capturer);
-    delete[] captureBuffer;
-}
-
-
 /***
 
     functions to make creating window elements easier
@@ -390,6 +349,78 @@ void createCheckBox(
     SendMessage(checkBox, WM_SETFONT, (WPARAM)hFont, true);
 }
 
+void createRadioButton(
+    std::wstring defaultText,
+    int width,
+    int height,
+    int xCoord,
+    int yCoord,
+    HWND parent,
+    HINSTANCE hInstance,
+    HMENU elementId,
+    HFONT hFont,
+    bool checked
+) {
+    HWND radioBtn = CreateWindow(
+        TEXT("button"),
+        defaultText.c_str(),
+        WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
+        xCoord, yCoord,  /* x, y coords */
+        width, height, /* width, height */
+        parent,
+        elementId,
+        hInstance,
+        NULL
+    );
+    SendMessage(radioBtn, WM_SETFONT, (WPARAM)hFont, true);
+    if (checked) {
+        SendMessage(radioBtn, BM_SETCHECK, (WPARAM)hFont, true);
+    }
+}
+
+void doAudioCapture(WASAPICapturerInfo* audioCaptureInfo) {
+    CWASAPICapture* capturer = *(audioCaptureInfo->capturer);
+    BYTE* captureBuffer = *(audioCaptureInfo->buffer);
+    std::cout << "do audio capture start\n";
+
+    PostMessage(audioCaptureInfo->mainWindow, ID_IN_PROGRESS, 0, 0);
+
+    // TODO: allowing only integer duration feels pretty restrictive
+    // and might capture more audio/screentime than desired.
+    //
+    // maybe we should allow users to stop recording arbitrarily
+    // and then we can also remove the cap on duration time
+    int targetDurationInMs = audioCaptureInfo->durationInMs;
+
+    // maybe this isn't a good idea but try converting ms to s.
+    float durationInSec = ceil(targetDurationInMs / 1000.f);
+    if (durationInSec < 1) durationInSec = 1;
+
+    int targetDurationInSec = (int)durationInSec;
+
+    do {
+        Sleep(1000);
+    } while (--targetDurationInSec);
+
+    capturer->Stop();
+
+    //
+    //  We've now captured our wave data.  Now write it out in a wave file.
+    //
+    std::cout << "got the audio data. writing to file now...\n";
+    std::cout << "wav filename: " << audioCaptureInfo->outputName << "\n";
+    SaveWaveData(captureBuffer, capturer->BytesCaptured(), capturer->MixFormat(), audioCaptureInfo->outputName);
+
+    //
+    //  Now shut down the capturer and release it we're done.
+    //
+    capturer->Shutdown();
+    SAFE_RELEASE(capturer);
+    delete[] captureBuffer;
+
+    PostMessage(audioCaptureInfo->mainWindow, ID_FINISHED, 0, 0);
+}
+
 void doScreenCapture(WindowInfo* args){
     // TODO: this should assemble the video using the captured audio and captured images
     HWND mainWindow = args->mainWindow;
@@ -407,8 +438,6 @@ void doScreenCapture(WindowInfo* args){
 
     getSnapshots(nFrames, tDelay, x1Pos, y1Pos, (x2Pos-x1Pos), (y2Pos-y1Pos), getBMPImageData, args);
     PostMessage(mainWindow, ID_FINISHED, 0, 0);
-
-    // TODO: add caption to each snapshot if needed, apply filters
 }
 
 // do all the things in a separate thread (which wil launch 2 child threads of its own)
@@ -417,125 +446,145 @@ void doEverything(){
     int tDelay = captureParams.timeDelay;
     std::string dirName = captureParams.tempDirectory;
 
-    // set up for audio collection
-    setUpForAudioCollection(
-        pEnumerator,
-        pDevice,
-        pAudioClient,
-        pCaptureClient,
-        pwfx
-    );
+    if (captureParams.screenOnly) {
+        WaitForSingleObject(
+            CreateThread(NULL, 0, processScreenCaptureThread, &captureParams, 0, 0),
+            INFINITE
+        );
+        if(captureParams.minimizeApp) PostMessage(captureParams.guiWindow, WM_SYSCOMMAND, SC_RESTORE, 0);
+    } else {
+        // set up for audio collection
+        audioCaptureInfo.outputName = std::string(dirName); // name the wav output the same as the temp directory of the snapshots
+        audioCaptureInfo.mainWindow = captureParams.mainWindow;
+        
+        setUpForAudioCollection(
+            pEnumerator,
+            pDevice,
+            pAudioClient,
+            pCaptureClient,
+            pwfx
+        );
 
-    std::cout << "bits per sample: " << pwfx->wBitsPerSample << "\n";
-    std::cout << "samples per sec: " << pwfx->nSamplesPerSec << "\n";
-    std::cout << "num channels: " << pwfx->nChannels << "\n";
-    std::cout << "starting capture...\n";
+        std::cout << "bits per sample: " << pwfx->wBitsPerSample << "\n";
+        std::cout << "samples per sec: " << pwfx->nSamplesPerSec << "\n";
+        std::cout << "num channels: " << pwfx->nChannels << "\n";
+        std::cout << "starting capture...\n";
 
-    CWASAPICapture* capturer = new CWASAPICapture(pDevice, true, eConsole);
-    if(capturer == NULL){
-        printf("Unable to allocate capturer\n");
-        return;
-    }
-
-    int targetLatency = 10;
-    if(capturer->Initialize(targetLatency)){
-        int targetDurationInMs = audioDuration;
-        size_t captureBufferSize = capturer->SamplesPerSecond() * ceil(targetDurationInMs / 1000) * capturer->FrameSize();
-        BYTE* captureBuffer = new BYTE[captureBufferSize];
-        std::cout << "buffer size: " << captureBufferSize << '\n';
-
-        if(captureBuffer == NULL){
-            printf("Unable to allocate capture buffer\n");
+        CWASAPICapture* capturer = new CWASAPICapture(pDevice, true, eConsole);
+        if (capturer == NULL) {
+            printf("Unable to allocate capturer\n");
             return;
         }
 
-        audioCaptureInfo.buffer = &captureBuffer;
-        audioCaptureInfo.capturer = &capturer;
-        audioCaptureInfo.durationInMs = targetDurationInMs;
-        audioCaptureInfo.outputName = std::string(dirName); // name the wav output the same as the temp directory of the snapshots
+        int targetLatency = 10;
+        if (capturer->Initialize(targetLatency)) {
+            int targetDurationInMs = audioDuration;
+            size_t captureBufferSize = capturer->SamplesPerSecond() * ceil(targetDurationInMs / 1000) * capturer->FrameSize();
+            BYTE* captureBuffer = new BYTE[captureBufferSize];
+            std::cout << "buffer size: " << captureBufferSize << '\n';
 
-        if(capturer->Start(captureBuffer, captureBufferSize)){
-            // start frame and audio capture process in child threads
-            HANDLE getFramesThread = CreateThread(NULL, 0, processScreenCaptureThread, &captureParams, 0, 0);
-            HANDLE getAudioThread = CreateThread(NULL, 0, processAudioThread, &audioCaptureInfo, 0, 0);
-            HANDLE waitArray[2] = { getFramesThread, getAudioThread };
+            if (captureBuffer == NULL) {
+                printf("Unable to allocate capture buffer\n");
+                return;
+            }
 
-            DWORD waitResult = WaitForMultipleObjects(2, waitArray, TRUE, INFINITE);
-            if(waitResult >= WAIT_OBJECT_0 + 0 && waitResult < WAIT_OBJECT_0 + 2){
-                // all child threads have completed
+            audioCaptureInfo.buffer = &captureBuffer;
+            audioCaptureInfo.capturer = &capturer;
+            audioCaptureInfo.durationInMs = targetDurationInMs;
 
-                if(!captureParams.ffmpegExists){
-                    // TODO: post msg that audio + images collected + no ffmpeg so finished?
-                    std::cout << "done capturing images and audio!\n";
+            if (capturer->Start(captureBuffer, captureBufferSize)) {
+                if (captureParams.audioOnly) {
+                    WaitForSingleObject(
+                        CreateThread(NULL, 0, processAudioThread, &audioCaptureInfo, 0, 0),
+                        INFINITE
+                    );
+                    if (captureParams.minimizeApp) PostMessage(captureParams.guiWindow, WM_SYSCOMMAND, SC_RESTORE, 0);
+                } else {
+                    // start frame and audio capture process in child threads
+                    HANDLE getFramesThread = CreateThread(NULL, 0, processScreenCaptureThread, &captureParams, 0, 0);
+                    HANDLE getAudioThread = CreateThread(NULL, 0, processAudioThread, &audioCaptureInfo, 0, 0);
+                    HANDLE waitArray[2] = { getFramesThread, getAudioThread };
 
-                    if (captureParams.cleanupFiles) {
-                        int numFrames = (int)floor((captureParams.duration * 1000) / captureParams.timeDelay);
+                    DWORD waitResult = WaitForMultipleObjects(2, waitArray, TRUE, INFINITE);
+                    if (waitResult >= WAIT_OBJECT_0 + 0 && waitResult < WAIT_OBJECT_0 + 2) {
+                        // all child threads have completed
+                        if (captureParams.minimizeApp) PostMessage(captureParams.guiWindow, WM_SYSCOMMAND, SC_RESTORE, 0);
 
-                        for (int i = 0; i < numFrames; i++) {
-                            // delete each file first
-                            DeleteFileA((dirName + "/screen" + std::to_string(i) + ".bmp").c_str());
+                        if (!captureParams.ffmpegExists) {
+                            // TODO: post msg that audio + images collected + no ffmpeg so finished?
+                            std::cout << "done capturing images and audio!\n";
+
+                            if (captureParams.cleanupFiles) {
+                                int numFrames = (int)floor((captureParams.duration * 1000) / captureParams.timeDelay);
+
+                                for (int i = 0; i < numFrames; i++) {
+                                    // delete each file first
+                                    DeleteFileA((dirName + "/screen" + std::to_string(i) + ".bmp").c_str());
+                                }
+                                // delete the dir
+                                RemoveDirectoryA(dirName.c_str());
+
+                                // delete the wav file
+                                DeleteFileA((dirName + ".wav").c_str());
+
+                                std::cout << "done cleaning up!\n";
+                            }
+
+                            return;
                         }
-                        // delete the dir
-                        RemoveDirectoryA(dirName.c_str());
 
-                        // delete the wav file
-                        DeleteFileA((dirName + ".wav").c_str());
+                        // assemble the video file using the captured screenshots and audio
+                        std::cout << "data collection done. creating the video file for: " << dirName << "...\n";
 
-                        std::cout << "done cleaning up!\n";
-                    }
+                        float framerate = 1000.0f / tDelay; // frames per sec
 
-                    return;
-                }
+                        // example: ffmpeg -framerate 8.3 -i ./temp_14-08-2022_183147/screen%d.bmp -i temp_14-08-2022_183147.wav -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v libx264 -pix_fmt yuv420p -r 8 testing.mp4
+                        std::string command(
+                            std::string("ffmpeg ") +
+                            std::string(" -framerate ") +
+                            std::to_string(framerate).c_str() +
+                            std::string(" -i ./") +
+                            dirName +
+                            std::string("/screen%d.bmp") +
+                            std::string(" -i ") +
+                            dirName +
+                            std::string(".wav") +
+                            std::string(" -vf \"pad=ceil(iw/2)*2:ceil(ih/2)*2\"") +
+                            std::string(" -c:v libx264 -pix_fmt yuv420p ") +
+                            std::string(" -r ") +
+                            std::to_string(framerate).c_str() +
+                            std::string(" ") + // can try -shortest flag if needed
+                            dirName +
+                            std::string(".mp4")
+                        );
 
-                // assemble the video file using the captured screenshots and audio
-                std::cout << "data collection done. creating the video file for: " << dirName << "...\n";
+                        std::cout << "attempting to run: " << command << "\n";
 
-                float framerate = 1000.0f / tDelay; // frames per sec
-
-                // example: ffmpeg -framerate 8.3 -i ./temp_14-08-2022_183147/screen%d.bmp -i temp_14-08-2022_183147.wav -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v libx264 -pix_fmt yuv420p -r 8 testing.mp4
-                std::string command(
-                    std::string("ffmpeg ") +
-                    std::string(" -framerate ") +
-                    std::to_string(framerate).c_str() +
-                    std::string(" -i ./") +
-                    dirName +
-                    std::string("/screen%d.bmp") +
-                    std::string(" -i ") +
-                    dirName +
-                    std::string(".wav") +
-                    std::string(" -vf \"pad=ceil(iw/2)*2:ceil(ih/2)*2\"") +
-                    std::string(" -c:v libx264 -pix_fmt yuv420p ") +
-                    std::string(" -r ") +
-                    std::to_string(framerate).c_str() +
-                    std::string(" ") + // can try -shortest flag if needed
-                    dirName +
-                    std::string(".mp4")
-                );
-
-                std::cout << "attempting to run: " << command << "\n";
-
-                // TODO: need to test when ffmpeg not available. I think if ffmpeg is not available there still would be a non-zero value returned.
-                int res = system(command.c_str());
-                if(res != 0){
-                    // TODO: post a message on the UI about failure
-                    std::cout << "processing failed :( do you have ffmpeg? \n";
-                }else{
-                    std::cout << "processing complete :)\n";
-
-                    if(captureParams.cleanupFiles){
-                        int numFrames = (int)floor((captureParams.duration*1000) / captureParams.timeDelay);
-
-                        for (int i = 0; i < numFrames; i++) {
-                            // delete each file first
-                            DeleteFileA((dirName + "/screen" + std::to_string(i) + ".bmp").c_str());
+                        // TODO: need to test when ffmpeg not available. I think if ffmpeg is not available there still would be a non-zero value returned.
+                        int res = system(command.c_str());
+                        if (res != 0) {
+                            // TODO: post a message on the UI about failure
+                            std::cout << "processing failed :( do you have ffmpeg? \n";
                         }
-                        // delete the dir
-                        RemoveDirectoryA(dirName.c_str());
+                        else {
+                            std::cout << "processing complete :)\n";
 
-                        // delete the wav file
-                        DeleteFileA((dirName + ".wav").c_str());
+                            if (captureParams.cleanupFiles) {
+                                int numFrames = (int)floor((captureParams.duration * 1000) / captureParams.timeDelay);
 
-                        std::cout << "done cleaning up!\n";
+                                for (int i = 0; i < numFrames; i++) {
+                                    // delete each file first
+                                    DeleteFileA((dirName + "/screen" + std::to_string(i) + ".bmp").c_str());
+                                }
+                                // delete the dir
+                                RemoveDirectoryA(dirName.c_str());
+
+                                // delete the wav file
+                                DeleteFileA((dirName + ".wav").c_str());
+
+                                std::cout << "done cleaning up!\n";
+                            }
+                        }
                     }
                 }
             }
@@ -594,6 +643,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam){
             AppendMenu(hMenu, MF_STRING, ID_SET_PARAMETERS_PAGE, L"Options");
             AppendMenu(hMenu, MF_STRING, ID_SET_ABOUT_PAGE, L"About");
             SetMenu(hwnd, hMenu);
+
+            captureParams.guiWindow = hwnd;
         }
         break;
         
@@ -685,6 +736,9 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                         (255 * 70) / 100, 
                         LWA_ALPHA
                     );
+
+                    // remove title bar so the top of screen can be selected
+                    SetWindowLongPtr(selectionWindow, GWL_STYLE, 0);
                     
                     // show window
                     ShowWindow(selectionWindow, SW_MAXIMIZE);
@@ -694,6 +748,9 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                 
                 case ID_START_BUTTON:
                 {
+                    // minimize app window
+                    if (captureParams.minimizeApp) PostMessage(captureParams.guiWindow, WM_SYSCOMMAND, SC_MINIMIZE, 0);
+
                     // get the parameters 
                     HWND duration = GetDlgItem(hwnd, ID_DURATION_TEXTBOX);
                     HWND delay = GetDlgItem(hwnd, ID_DELAY_TEXTBOX);
@@ -732,7 +789,7 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                     int captionSize = textLen + 1; // +1 for null term
 
                     // some compilers like g++ are ok with dynamic array sizes: TCHAR captext[captionSize];
-                    // but not in Visual Studio lol
+                    // but not MSVC
                     TCHAR* captext = new TCHAR[captionSize];
                     GetWindowText(captionText, captext, captionSize);
 
@@ -749,15 +806,20 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
                     // make a temp directory 
                     std::string dirName = "temp_" + std::string(currTime.begin(), currTime.end());
-                    if (CreateDirectoryA(dirName.c_str(), NULL)){
-                        // do nothing
-                    }else if (ERROR_ALREADY_EXISTS == GetLastError()){
-                        // if it exists, empty out the directory
-                    }else{
-                        // directory couldn't be made
+                    captureParams.tempDirectory = dirName;
+
+                    if (captureParams.audioAndScreen || captureParams.screenOnly) {
+                        if (CreateDirectoryA(dirName.c_str(), NULL)) {
+                            // do nothing
+                        }
+                        else if (ERROR_ALREADY_EXISTS == GetLastError()) {
+                            // if it exists, empty out the directory
+                        }
+                        else {
+                            // directory couldn't be made
+                        }
                     }
 
-                    captureParams.tempDirectory = dirName;
                     captureParams.duration = dur;
                     captureParams.timeDelay = tDelay;
                     captureParams.selectedFilter = currFilterIndex;
@@ -907,20 +969,28 @@ LRESULT CALLBACK WndProcParameterPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                         // get the value of 'show cursor' checkbox 
                         HWND getCursorBox = GetDlgItem(hwnd, ID_GET_CURSOR);
                         int getCursorVal = SendMessage(getCursorBox, BM_GETCHECK, 0, 0);
-                        if(getCursorVal == BST_CHECKED){
-                            captureParams.getCursor = true;
-                        }else{
-                            captureParams.getCursor = false;
-                        }
+                        captureParams.getCursor = (getCursorVal == BST_CHECKED);
 
                         HWND getCleanupCursorBox = GetDlgItem(hwnd, ID_CLEANUP_FILES);
                         int getCleanupCursorVal = SendMessage(getCleanupCursorBox, BM_GETCHECK, 0, 0);
-                        if(getCleanupCursorVal == BST_CHECKED){
-                            captureParams.cleanupFiles = true;
-                        }else{
-                            captureParams.cleanupFiles = false;
+                        captureParams.cleanupFiles = (getCleanupCursorVal == BST_CHECKED);
 
-                        }
+                        HWND getMinimizeApp = GetDlgItem(hwnd, ID_MINIMIZE_APP);
+                        int getMinimizeAppVal = SendMessage(getMinimizeApp, BM_GETCHECK, 0, 0);
+                        captureParams.minimizeApp = (getMinimizeAppVal == BST_CHECKED);
+
+                        // specify if capture should be audio only, screen only or both
+                        HWND getAudioOnly = GetDlgItem(hwnd, ID_AUDIO_ONLY);
+                        int getAudioOnlyVal = SendMessage(getAudioOnly, BM_GETCHECK, 0, 0);
+                        captureParams.audioOnly = (getAudioOnlyVal == BST_CHECKED);
+
+                        HWND getScreenOnly = GetDlgItem(hwnd, ID_SCREEN_ONLY);
+                        int getScreenOnlyVal = SendMessage(getScreenOnly, BM_GETCHECK, 0, 0);
+                        captureParams.screenOnly = (getScreenOnlyVal == BST_CHECKED);
+
+                        HWND getAudioAndScreen = GetDlgItem(hwnd, ID_AUDIO_AND_SCREEN);
+                        int getAudioAndScreenVal = SendMessage(getAudioAndScreen, BM_GETCHECK, 0, 0);
+                        captureParams.audioAndScreen = (getAudioAndScreenVal == BST_CHECKED);
                     }
                 }
             }
@@ -1236,36 +1306,44 @@ void createParameterPage(HWND hwnd, HINSTANCE hInstance){
     SendMessage(setColorBox, CB_SETCURSEL, (WPARAM)0, (LPARAM)0);
     
     // set saturation value (float) for saturation filter
-    createLabel(L"set saturation value: ", 200, 20, 10, 45, hwnd, hInstance, NULL, hFont);
-    createEditBox(L"2.1", 50, 20, 210, 43, hwnd, hInstance, (HMENU)ID_SET_SATURATION, hFont);
+    createLabel(L"set saturation value: ", 200, 20, 10, 50, hwnd, hInstance, NULL, hFont);
+    createEditBox(L"2.1", 50, 20, 210, 50, hwnd, hInstance, (HMENU)ID_SET_SATURATION, hFont);
     
     // set mosaic chunk size for the mosaic filter
-    createLabel(L"set mosaic chunk size: ", 200, 20, 10, 85, hwnd, hInstance, NULL, hFont);
-    createEditBox(L"10", 50, 20, 210, 83, hwnd, hInstance, (HMENU)ID_SET_MOSAIC, hFont);
+    createLabel(L"set mosaic chunk size: ", 200, 20, 10, 80, hwnd, hInstance, NULL, hFont);
+    createEditBox(L"10", 50, 20, 210, 78, hwnd, hInstance, (HMENU)ID_SET_MOSAIC, hFont);
     
     // set the difference limit allowed betweeen 2 pixel colors (int) for outline filter
-    createLabel(L"set outline difference limit: ", 200, 20, 10, 125, hwnd, hInstance, NULL, hFont);
-    createEditBox(L"10", 50, 20, 210, 123, hwnd, hInstance, (HMENU)ID_SET_OUTLINE, hFont);
+    createLabel(L"set outline difference limit: ", 200, 20, 10, 110, hwnd, hInstance, NULL, hFont);
+    createEditBox(L"10", 50, 20, 210, 110, hwnd, hInstance, (HMENU)ID_SET_OUTLINE, hFont);
     
     // set neighbor constant for Voronoi
-    createLabel(L"set Voronoi neighbor constant: ", 180, 20, 10, 165, hwnd, hInstance, NULL, hFont);
-    createEditBox(L"30", 50, 20, 210, 165, hwnd, hInstance, (HMENU)ID_SET_VORONOI, hFont);
+    createLabel(L"set Voronoi neighbor constant: ", 180, 20, 10, 140, hwnd, hInstance, NULL, hFont);
+    createEditBox(L"30", 50, 20, 210, 140, hwnd, hInstance, (HMENU)ID_SET_VORONOI, hFont);
     
     // set blur factor
-    createLabel(L"set blur factor: ", 170, 20, 10, 205, hwnd, hInstance, NULL, hFont);
-    createEditBox(L"3", 50, 20, 210, 205, hwnd, hInstance, (HMENU)ID_SET_BLUR, hFont);
+    createLabel(L"set blur factor: ", 170, 20, 10, 170, hwnd, hInstance, NULL, hFont);
+    createEditBox(L"3", 50, 20, 210, 170, hwnd, hInstance, (HMENU)ID_SET_BLUR, hFont);
 
     // set whether to capture the cursor or not
-    createCheckBox(L"capture screen cursor", 180, 50, 10, 230, hwnd, hInstance, (HMENU)ID_GET_CURSOR, hFont);
+    createCheckBox(L"capture screen cursor", 180, 20, 10, 205, hwnd, hInstance, (HMENU)ID_GET_CURSOR, hFont);
 
     // whether the captured frames (.bmps) and audio (.wav) should be deleted after video creation
-    createCheckBox(L"cleanup files after video creation", 250, 50, 10, 260, hwnd, hInstance, (HMENU)ID_CLEANUP_FILES, hFont);
+    createCheckBox(L"cleanup files after video creation", 250, 20, 10, 225, hwnd, hInstance, (HMENU)ID_CLEANUP_FILES, hFont);
+
+    // whether to minimize the app when recording
+    createCheckBox(L"minimize when recording", 250, 20, 10, 245, hwnd, hInstance, (HMENU)ID_MINIMIZE_APP, hFont);
+
+    // create radio buttons to choose whether to record just audio, just the screen or both
+    createRadioButton(L"capture audio only", 150, 20, 10, 275, hwnd, hInstance, (HMENU)ID_AUDIO_ONLY, hFont);
+    createRadioButton(L"capture screen only", 150, 20, 10, 295, hwnd, hInstance, (HMENU)ID_SCREEN_ONLY, hFont);
+    createRadioButton(L"capture audio and screen", 170, 20, 10, 315, hwnd, hInstance, (HMENU)ID_AUDIO_AND_SCREEN, hFont, true);
     
     HWND saveParameters = CreateWindow(
         TEXT("button"),
         TEXT("save"),
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        150, 310,
+        150, 352,
         80, 20, 
         hwnd,
         (HMENU)ID_SAVE_PARAMETERS,
@@ -1343,6 +1421,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     captureParams.getCursor = false;
     captureParams.cleanupFiles = false;
     captureParams.ffmpegExists = ffmpegExists;
+    captureParams.audioOnly = false;
+    captureParams.screenOnly = false;
+    captureParams.audioAndScreen = true;
+    captureParams.minimizeApp = false;
     
     // for improving the gui appearance (buttons, that is. the font needs to be changed separately) 
     INITCOMMONCONTROLSEX icc;

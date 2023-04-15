@@ -42,6 +42,10 @@
 #define ID_SET_BLUR 207
 #define ID_GET_CURSOR 208
 #define ID_CLEANUP_FILES 209
+#define ID_AUDIO_ONLY 210
+#define ID_SCREEN_ONLY 211
+#define ID_AUDIO_AND_SCREEN 212
+#define ID_MINIMIZE_APP 213
 
 
 // IDs for signalling certain progress messages
