@@ -42,6 +42,9 @@ struct WindowInfo {
 	int blurFactor;              // for blur filter
 	bool getCursor;
 	bool cleanupFiles;
+	bool audioOnly;
+	bool screenOnly;
+	bool audioAndScreen;
 };
 
 // convert an int to string 
