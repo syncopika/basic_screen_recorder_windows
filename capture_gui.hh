@@ -31,7 +31,7 @@ struct WASAPICapturerInfo {
 	BYTE** buffer;
 	int durationInMs;
 	std::string outputName;
-	HWND mainWindow; // main window so the worker thread can post messages to its queue 
+	HWND mainWindow; // main window that contains a status box to update
 };
 
 std::string floatToString(float f);

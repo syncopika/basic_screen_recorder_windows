@@ -447,9 +447,16 @@ void doEverything(){
     std::string dirName = captureParams.tempDirectory;
 
     if (captureParams.screenOnly) {
-        CreateThread(NULL, 0, processScreenCaptureThread, &captureParams, 0, 0);
+        WaitForSingleObject(
+            CreateThread(NULL, 0, processScreenCaptureThread, &captureParams, 0, 0),
+            INFINITE
+        );
+        if(captureParams.minimizeApp) PostMessage(captureParams.guiWindow, WM_SYSCOMMAND, SC_RESTORE, 0);
     } else {
         // set up for audio collection
+        audioCaptureInfo.outputName = std::string(dirName); // name the wav output the same as the temp directory of the snapshots
+        audioCaptureInfo.mainWindow = captureParams.mainWindow;
+        
         setUpForAudioCollection(
             pEnumerator,
             pDevice,
@@ -484,12 +491,14 @@ void doEverything(){
             audioCaptureInfo.buffer = &captureBuffer;
             audioCaptureInfo.capturer = &capturer;
             audioCaptureInfo.durationInMs = targetDurationInMs;
-            audioCaptureInfo.outputName = std::string(dirName); // name the wav output the same as the temp directory of the snapshots
-            audioCaptureInfo.mainWindow = captureParams.mainWindow;
 
             if (capturer->Start(captureBuffer, captureBufferSize)) {
                 if (captureParams.audioOnly) {
-                    CreateThread(NULL, 0, processAudioThread, &audioCaptureInfo, 0, 0);
+                    WaitForSingleObject(
+                        CreateThread(NULL, 0, processAudioThread, &audioCaptureInfo, 0, 0),
+                        INFINITE
+                    );
+                    if (captureParams.minimizeApp) PostMessage(captureParams.guiWindow, WM_SYSCOMMAND, SC_RESTORE, 0);
                 } else {
                     // start frame and audio capture process in child threads
                     HANDLE getFramesThread = CreateThread(NULL, 0, processScreenCaptureThread, &captureParams, 0, 0);
@@ -499,6 +508,7 @@ void doEverything(){
                     DWORD waitResult = WaitForMultipleObjects(2, waitArray, TRUE, INFINITE);
                     if (waitResult >= WAIT_OBJECT_0 + 0 && waitResult < WAIT_OBJECT_0 + 2) {
                         // all child threads have completed
+                        if (captureParams.minimizeApp) PostMessage(captureParams.guiWindow, WM_SYSCOMMAND, SC_RESTORE, 0);
 
                         if (!captureParams.ffmpegExists) {
                             // TODO: post msg that audio + images collected + no ffmpeg so finished?
@@ -633,6 +643,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam){
             AppendMenu(hMenu, MF_STRING, ID_SET_PARAMETERS_PAGE, L"Options");
             AppendMenu(hMenu, MF_STRING, ID_SET_ABOUT_PAGE, L"About");
             SetMenu(hwnd, hMenu);
+
+            captureParams.guiWindow = hwnd;
         }
         break;
         
@@ -736,6 +748,9 @@ LRESULT CALLBACK WndProcMainPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                 
                 case ID_START_BUTTON:
                 {
+                    // minimize app window
+                    if (captureParams.minimizeApp) PostMessage(captureParams.guiWindow, WM_SYSCOMMAND, SC_MINIMIZE, 0);
+
                     // get the parameters 
                     HWND duration = GetDlgItem(hwnd, ID_DURATION_TEXTBOX);
                     HWND delay = GetDlgItem(hwnd, ID_DELAY_TEXTBOX);
@@ -959,6 +974,10 @@ LRESULT CALLBACK WndProcParameterPage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
                         HWND getCleanupCursorBox = GetDlgItem(hwnd, ID_CLEANUP_FILES);
                         int getCleanupCursorVal = SendMessage(getCleanupCursorBox, BM_GETCHECK, 0, 0);
                         captureParams.cleanupFiles = (getCleanupCursorVal == BST_CHECKED);
+
+                        HWND getMinimizeApp = GetDlgItem(hwnd, ID_MINIMIZE_APP);
+                        int getMinimizeAppVal = SendMessage(getMinimizeApp, BM_GETCHECK, 0, 0);
+                        captureParams.minimizeApp = (getMinimizeAppVal == BST_CHECKED);
 
                         // specify if capture should be audio only, screen only or both
                         HWND getAudioOnly = GetDlgItem(hwnd, ID_AUDIO_ONLY);
@@ -1310,7 +1329,10 @@ void createParameterPage(HWND hwnd, HINSTANCE hInstance){
     createCheckBox(L"capture screen cursor", 180, 20, 10, 205, hwnd, hInstance, (HMENU)ID_GET_CURSOR, hFont);
 
     // whether the captured frames (.bmps) and audio (.wav) should be deleted after video creation
-    createCheckBox(L"cleanup files after video creation", 250, 20, 10, 235, hwnd, hInstance, (HMENU)ID_CLEANUP_FILES, hFont);
+    createCheckBox(L"cleanup files after video creation", 250, 20, 10, 225, hwnd, hInstance, (HMENU)ID_CLEANUP_FILES, hFont);
+
+    // whether to minimize the app when recording
+    createCheckBox(L"minimize when recording", 250, 20, 10, 245, hwnd, hInstance, (HMENU)ID_MINIMIZE_APP, hFont);
 
     // create radio buttons to choose whether to record just audio, just the screen or both
     createRadioButton(L"capture audio only", 150, 20, 10, 275, hwnd, hInstance, (HMENU)ID_AUDIO_ONLY, hFont);
@@ -1402,6 +1424,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     captureParams.audioOnly = false;
     captureParams.screenOnly = false;
     captureParams.audioAndScreen = true;
+    captureParams.minimizeApp = false;
     
     // for improving the gui appearance (buttons, that is. the font needs to be changed separately) 
     INITCOMMONCONTROLSEX icc;

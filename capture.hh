@@ -30,7 +30,10 @@ struct WindowInfo {
 	std::string directory; // this was for selecting a directory to read bmps from but can probably be removed now
 	std::string tempDirectory; // the directory to place snapshots in
 	std::wstring captionText;
-	HWND mainWindow; // main window so the worker thread can post messages to its queue 
+	
+	HWND mainWindow; // main window containing status box to update
+	HWND guiWindow; // the main app window so we can minimize the app when recording
+
 	std::map<int, std::wstring> filters;
     
 	// parameters from the parameters page 
@@ -40,8 +43,12 @@ struct WindowInfo {
 	int outlineColorDiffLimit;   // for outline filter 
 	int voronoiNeighborConstant; // for Voronoi filter
 	int blurFactor;              // for blur filter
+	
 	bool getCursor;
+	bool minimizeApp;
 	bool cleanupFiles;
+
+	// capture options
 	bool audioOnly;
 	bool screenOnly;
 	bool audioAndScreen;
