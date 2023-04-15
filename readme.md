@@ -18,3 +18,15 @@ Features include:
 ## current limitations:    
 - capture duration is capped at 30 seconds currently
 - `ffmpeg` is expected to be on PATH
+    
+<details>
+<summary>example output from the app </summary>
+
+<video src="https://user-images.githubusercontent.com/8601582/230380457-52cd23d8-d937-4ea8-98a2-3b88c7042be9.mp4"></video> 
+from the anime _Bocchi the Rock!_ (ep 4) with saturation filter applied.
+    
+<hr />
+
+<video src="https://user-images.githubusercontent.com/8601582/230383000-f060cddf-9d3d-47dd-b0a2-326a598fc495.mp4"></video>
+from https://www.youtube.com/watch?v=D8gwnKApqCE
+</details>
