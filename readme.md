@@ -10,6 +10,18 @@ Features include:
 - ability to capture the mouse cursor
 - can specify whether to capture audio only, the screen only, or both
     
+<details>
+<summary>example output from the app </summary>
+
+<video src="https://user-images.githubusercontent.com/8601582/230380457-52cd23d8-d937-4ea8-98a2-3b88c7042be9.mp4"></video> 
+from the anime _Bocchi the Rock!_ (ep 4) with saturation filter applied.
+    
+<hr />
+
+<video src="https://user-images.githubusercontent.com/8601582/230383000-f060cddf-9d3d-47dd-b0a2-326a598fc495.mp4"></video>
+from https://www.youtube.com/watch?v=D8gwnKApqCE
+</details>
+    
 **Note**: this project relies on `ffmpeg` to create the video file and expects it to be installed. Other than that, no other external dependencies! I used Visual Studio 2019 Community and Windows 10 to build this project.    
     
 ![screenshot of gui](notes/gui_screenshot.png)    
@@ -31,14 +43,3 @@ This should allow the audio to be recorded continuously even if there's technica
 ![screenshot of sound control panel 2 to avoid truncated audio](notes/sound-control-panel3.png)    
 ![screenshot of sound control panel 3 to avoid truncated audio](notes/sound-control-panel4.png)    
     
-<details>
-<summary>example output from the app </summary>
-
-<video src="https://user-images.githubusercontent.com/8601582/230380457-52cd23d8-d937-4ea8-98a2-3b88c7042be9.mp4"></video> 
-from the anime _Bocchi the Rock!_ (ep 4) with saturation filter applied.
-    
-<hr />
-
-<video src="https://user-images.githubusercontent.com/8601582/230383000-f060cddf-9d3d-47dd-b0a2-326a598fc495.mp4"></video>
-from https://www.youtube.com/watch?v=D8gwnKApqCE
-</details>
