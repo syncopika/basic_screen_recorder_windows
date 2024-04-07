@@ -23,6 +23,17 @@ TODO:
 - improve status updates in gui when processing.
 - instead of interval to collect frames set frame rate?
 
+ISSUES:
+If no audio file is playing, no audio will be captured, which is expected behavior with WASAPI loopback but can result in truncated audio (which will not be aligned with frames captured)
+if there's initial silence or a file gets stopped/replayed throughout after starting recording. You can see this behavior in Audacity with WASAPI as the audio host.
+
+One workaround is to go to Control Panel -> Hardware and Sound -> Manage audio devices -> 
+then right-click on an enabled recording device (e.g. Stereo Mix) -> Properties -> click on Listen tab -> click 'Listen to this device' checkbox -> click on Levels tab and set volume to 0.
+this should allow the audio to be recorded continuously even if there's technically no audio file being played.
+
+See https://forum.audacityteam.org/t/windows-wasapi-only-records-when-a-sound-is-played/57357
+https://forum.audacityteam.org/t/cant-find-the-secret-formula-for-silence/66689
+
 wasapi
 https://stackoverflow.com/questions/64318206/record-an-audio-stream-with-wasapi
 
