@@ -19,6 +19,18 @@ Features include:
 - capture duration is capped at 30 seconds currently
 - `ffmpeg` is expected to be on PATH
     
+If no audio file is playing, no audio will be captured, which is expected behavior with WASAPI loopback but can result in truncated audio (which will not be aligned with the frames captured)
+if there's initial silence or a file gets stopped/replayed throughout after starting recording. You can see this behavior in Audacity with WASAPI as the audio host.    
+    
+One workaround is to go to Control Panel -> Hardware and Sound -> Manage audio devices -> 
+then right-click on an enabled recording device (e.g. Stereo Mix) -> Properties -> click on Listen tab -> click 'Listen to this device' checkbox -> click on Levels tab and set volume to 0 (see screenshots below).    
+    
+This should allow the audio to be recorded continuously even if there's technically no audio file being played.    
+    
+![screenshot of sound control panel 1 to avoid truncated audio](notes/sound-control-panel2.png)    
+![screenshot of sound control panel 2 to avoid truncated audio](notes/sound-control-panel3.png)    
+![screenshot of sound control panel 3 to avoid truncated audio](notes/sound-control-panel4.png)    
+    
 <details>
 <summary>example output from the app </summary>
 
